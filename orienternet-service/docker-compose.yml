@@ -1,0 +1,19 @@
+services:
+  orienternet:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      ORIENTERNET_API_KEY: ${ORIENTERNET_API_KEY:-change-me}
+      ORIENTERNET_ROTATIONS: ${ORIENTERNET_ROTATIONS:-128}
+      ORIENTERNET_CACHE: /cache
+    volumes:
+      - ./cache:/cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped

@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/nav_surface">
+
+    <LinearLayout
+        android:id="@+id/searchPanel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@color/white"
+        android:elevation="8dp"
+        android:orientation="vertical"
+        android:padding="10dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/sourceInput"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:backgroundTint="@color/nav_primary"
+                android:hint="@string/source_hint"
+                android:imeOptions="actionNext"
+                android:inputType="textPostalAddress"
+                android:maxLines="1"
+                android:paddingHorizontal="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/useGpsButton"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="@string/use_gps"
+                android:textAllCaps="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/destinationInput"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:backgroundTint="@color/nav_primary"
+                android:hint="@string/destination_hint"
+                android:imeOptions="actionSearch"
+                android:inputType="textPostalAddress"
+                android:maxLines="1"
+                android:paddingHorizontal="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/searchButton"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="@string/find"
+                android:textAllCaps="false" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/mapPointButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:text="@string/choose_on_map"
+                android:textAllCaps="false" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/routeButton"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/route"
+                android:textAllCaps="false" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/settingsButton"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:text="@string/settings"
+                android:textAllCaps="false" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <org.maplibre.android.maps.MapView
+        android:id="@+id/mapView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/searchPanel" />
+
+    <LinearLayout
+        android:id="@+id/statusCard"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_margin="12dp"
+        android:background="@color/white"
+        android:elevation="10dp"
+        android:orientation="vertical"
+        android:padding="12dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/navigationInstruction"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Укажите точку назначения"
+                android:textColor="@color/nav_text"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/navigationButton"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:enabled="false"
+                android:text="@string/start_navigation"
+                android:textAllCaps="false" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/routeSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Маршрут не построен"
+            android:textColor="@color/nav_text"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/localizationStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Позиция: ожидание GPS"
+            android:textColor="@color/nav_warn"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <androidx.camera.view.PreviewView
+        android:id="@+id/cameraPreview"
+        android:layout_width="112dp"
+        android:layout_height="84dp"
+        android:layout_margin="12dp"
+        android:background="#CC000000"
+        android:contentDescription="@string/camera_preview"
+        android:elevation="12dp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/searchPanel" />
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/recenterButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:contentDescription="Центрировать"
+        android:src="@drawable/ic_my_location"
+        app:backgroundTint="@color/white"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/cameraPreview"
+        app:tint="@color/nav_primary" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

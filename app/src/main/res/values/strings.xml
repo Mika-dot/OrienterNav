@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OrienterNav</string>
+    <string name="source_hint">Откуда: GPS или адрес</string>
+    <string name="destination_hint">Куда: адрес или точка на карте</string>
+    <string name="find">Найти</string>
+    <string name="route">Построить</string>
+    <string name="start_navigation">Начать</string>
+    <string name="stop_navigation">Стоп</string>
+    <string name="settings">Настройки</string>
+    <string name="use_gps">Мой GPS</string>
+    <string name="choose_on_map">На карте</string>
+    <string name="camera_preview">Камера визуальной локализации</string>
+</resources>
