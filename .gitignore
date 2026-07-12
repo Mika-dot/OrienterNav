@@ -1,0 +1,14 @@
+*.iml
+.gradle/
+.idea/
+local.properties
+captures/
+build/
+**/build/
+*.jks
+*.keystore
+.env
+orienternet-service/cache/
+orienternet-service/.venv/
+__pycache__/
+.pytest_cache/
