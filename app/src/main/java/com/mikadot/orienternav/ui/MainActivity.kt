@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.view.View
+import android.view.WindowManager
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
@@ -58,6 +59,7 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
 class MainActivity :
@@ -69,6 +71,7 @@ class MainActivity :
     private val fusion = FusionEngine()
     private val handler = Handler(Looper.getMainLooper())
     private val http by lazy { NominatimClient.defaultHttp() }
+    private val localizationInFlight = AtomicBoolean(false)
 
     private var map: MapLibreMap? = null
     private var currentGps: GpsSample? = null
@@ -104,6 +107,7 @@ class MainActivity :
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         MapLibre.getInstance(this)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -351,7 +355,13 @@ class MainActivity :
 
     private fun captureAndLocalize() {
         val prior = visualPrior() ?: return
-        frameSampler?.capture { bytesResult ->
+        if (!localizationInFlight.compareAndSet(false, true)) return
+        val sampler = frameSampler
+        if (sampler == null) {
+            localizationInFlight.set(false)
+            return
+        }
+        sampler.capture { bytesResult ->
             bytesResult
                 .onSuccess { jpeg ->
                     lifecycleScope.launch {
@@ -362,10 +372,15 @@ class MainActivity :
                                 fused?.headingDegrees ?: currentGps?.bearingDegrees,
                                 if (fused?.state == TrustState.GPS_TRUSTED) 96 else 160,
                             )
-                        }.onSuccess { estimate -> updateFused(fusion.addVisual(estimate)) }
-                            .onFailure { binding.localizationStatus.text = "Камера: ${it.message}" }
+                        }.onSuccess { estimate ->
+                            if (navigating) updateFused(fusion.addVisual(estimate))
+                        }.onFailure { binding.localizationStatus.text = "Камера: ${it.message}" }
+                        localizationInFlight.set(false)
                     }
-                }.onFailure { runOnUiThread { binding.localizationStatus.text = "Камера: ${it.message}" } }
+                }.onFailure {
+                    localizationInFlight.set(false)
+                    runOnUiThread { binding.localizationStatus.text = "Камера: ${it.message}" }
+                }
         }
     }
 
