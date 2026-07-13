@@ -21,9 +21,26 @@ included GPU service.
 
 ## Build the APK on Windows
 
+### Easiest: GitHub Actions
+
+1. Open the repository's **Actions** tab and select the latest **CI** run for
+   `main`.
+2. Wait until both jobs are green.
+3. In the run page's **Artifacts** section, download
+   `OrienterNav-debug-apk` and unpack the ZIP.
+4. Copy `app-debug.apk` to the phone, allow installation from the browser or
+   file manager when Android asks, and open the APK.
+
+If Actions are disabled for the private repository, enable them in
+**Settings → Actions → General**, then run the **CI** workflow again.
+
+### Build locally
+
 1. Install Android Studio with Android SDK 35 and JDK 17.
-2. Open the repository root as a project and wait for Gradle sync.
-3. Run `gradlew.bat testDebugUnitTest assembleDebug`.
+2. Clone/download this repository, open its root as a project, and wait for
+   Gradle sync.
+3. Open the terminal in the project root and run
+   `gradlew.bat testDebugUnitTest assembleDebug`.
 4. Install `app\build\outputs\apk\debug\app-debug.apk` on Android 8.0+.
 
 No Google Maps key is required. The default routing endpoint is the public OSRM
