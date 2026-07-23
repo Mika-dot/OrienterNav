@@ -17,8 +17,25 @@ jobs:
           cache: gradle
       - uses: android-actions/setup-android@v3
       - run: chmod +x gradlew
-      - run: ./gradlew testDebugUnitTest assembleDebug --stacktrace
+      - name: Build APK
+        id: build
+        shell: bash
+        run: |
+          set +e
+          ./gradlew testDebugUnitTest assembleDebug --stacktrace 2>&1 | tee gradle.log
+          rc=${PIPESTATUS[0]}
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
       - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: OSMLocNav-v0.4.0-gradle-log
+          path: gradle.log
+      - uses: actions/upload-artifact@v4
+        if: steps.build.outputs.exit_code == '0'
         with:
           name: OSMLocNav-v0.4.0-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Fail when Gradle failed
+        if: steps.build.outputs.exit_code != '0'
+        run: exit 1
