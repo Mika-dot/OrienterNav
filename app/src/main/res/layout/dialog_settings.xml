@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
+    <EditText android:id="@+id/serverUrl" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="http://192.168.1.10:8000" android:inputType="textUri" />
+    <EditText android:id="@+id/apiKey" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="API ключ" android:inputType="textPassword" />
+    <EditText android:id="@+id/frameInterval" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Интервал кадров, мс" android:inputType="number" />
+</LinearLayout>
