@@ -19,7 +19,23 @@ jobs:
           cache: pip
           cache-dependency-path: orienternet-service/requirements.txt
       - run: pip install -r requirements.txt
-      - run: pytest -q
+      - name: Test API
+        id: service_test
+        shell: bash
+        run: |
+          set +e
+          pytest -q 2>&1 | tee pytest.log
+          rc=${PIPESTATUS[0]}
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: OrienterNet-service-pytest-log
+          path: orienternet-service/pytest.log
+      - name: Fail when service tests failed
+        if: steps.service_test.outputs.exit_code != '0'
+        run: exit 1
 
   android:
     runs-on: ubuntu-latest
