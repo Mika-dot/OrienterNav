@@ -7,8 +7,10 @@ build/
 **/build/
 *.jks
 *.keystore
+*.ckpt
 .env
 orienternet-service/cache/
+orienternet-service/venv/
 orienternet-service/.venv/
 __pycache__/
 .pytest_cache/
