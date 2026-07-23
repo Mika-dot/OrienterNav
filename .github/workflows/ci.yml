@@ -19,7 +19,7 @@ jobs:
           cache: pip
           cache-dependency-path: orienternet-service/requirements.txt
       - run: pip install -r requirements.txt
-      - run: pytest -q
+      - run: python -m pytest -q
 
   android:
     runs-on: ubuntu-latest
