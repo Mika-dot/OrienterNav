@@ -18,6 +18,7 @@ android {
     }
 
     sourceSets["main"].java.setSrcDirs(listOf("src/main/java/com/mikadot/osmlocnav"))
+    sourceSets["test"].java.setSrcDirs(listOf("src/test/java/com/mikadot/osmlocnav"))
     buildFeatures { viewBinding = true; buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
