@@ -17,6 +17,7 @@ android {
         buildConfigField("String", "ROUTER_URL", "\"https://router.project-osrm.org\"")
     }
 
+    sourceSets["main"].java.exclude("com/mikadot/orienternav/**")
     buildFeatures { viewBinding = true; buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
