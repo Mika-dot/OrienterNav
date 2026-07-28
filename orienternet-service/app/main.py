@@ -138,8 +138,30 @@ class Engine:
         with self._lock:
             if self.loaded:
                 return
-            from maploc.demo import Demo
             import torch
+
+            # Совместимость со старыми Lightning checkpoint
+            # checkpoint создан самим OrienterNet, источник доверенный
+            try:
+                torch.serialization.add_safe_globals([
+                    __import__("typing").Any,
+                    __import__("omegaconf").dictconfig.DictConfig,
+                    __import__("omegaconf").base.ContainerMetadata,
+                ])
+            except Exception:
+                pass
+
+            # PyTorch >= 2.6 изменил default weights_only=True.
+            # Возвращаем старое поведение для доверенных ckpt.
+            _original_torch_load = torch.load
+
+            def _trusted_torch_load(*args, **kwargs):
+                kwargs["weights_only"] = False
+                return _original_torch_load(*args, **kwargs)
+
+            torch.load = _trusted_torch_load
+
+            from maploc.demo import Demo
 
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             checkpoint, source = resolve_checkpoint()
@@ -451,20 +473,36 @@ def localize(
         raise HTTPException(status_code=413, detail="Изображение слишком большое")
 
     suffix = ".png" if content_type == "image/png" else ".jpg"
-    with tempfile.NamedTemporaryFile(suffix=suffix) as tmp:
-        tmp.write(payload)
-        tmp.flush()
-        try:
-            return engine.localize(
-                tmp.name,
-                request.prior_lat,
-                request.prior_lon,
-                request.search_radius_m,
-                request.prior_heading_deg,
-            )
-        except HTTPException:
-            raise
-        except Exception as error:
-            raise HTTPException(
-                status_code=503, detail=f"Ошибка локализации: {error}"
-            ) from error
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            suffix=suffix,
+            delete=False
+        ) as tmp:
+            tmp.write(payload)
+            tmp.flush()
+            tmp_path = tmp.name
+
+        return engine.localize(
+            tmp_path,
+            request.prior_lat,
+            request.prior_lon,
+            request.search_radius_m,
+            request.prior_heading_deg,
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ошибка локализации: {error}"
+        ) from error
+
+    finally:
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
