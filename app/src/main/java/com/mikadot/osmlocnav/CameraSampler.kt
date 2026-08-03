@@ -64,7 +64,8 @@ class CameraSampler(
         val info = camera?.cameraInfo?.exposureState ?: return
         if (!info.isExposureCompensationSupported) return
         val current = info.exposureCompensationIndex
-        val target = (current + direction.coerceIn(-1, 1)).coerceIn(info.exposureCompensationRange)
+        val range = info.exposureCompensationRange
+        val target = (current + direction.coerceIn(-1, 1)).coerceIn(range.lower, range.upper)
         if (target != current) camera?.cameraControl?.setExposureCompensationIndex(target)
     }
 

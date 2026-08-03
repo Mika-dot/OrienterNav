@@ -273,7 +273,7 @@ class InertialNavigator(context: Context) : SensorEventListener {
             -values[2]
         }
         val magnitude = sqrt(values.fold(0.0) { acc, value -> acc + value.toDouble() * value.toDouble() })
-        val usable = if (magnitude > 9.0) 0.0 else forward.coerceIn(-6.0, 5.0)
+        val usable = if (magnitude > 9.0) 0.0 else forward.toDouble().coerceIn(-6.0, 5.0)
         filteredAccel = filteredAccel * 0.90 + usable * 0.10
     }
 
