@@ -271,6 +271,21 @@ Set-Location "$env:USERPROFILE\Desktop\OrienterNav\orienternet-service"
 
 Установка долгая. Не закрывайте окно, пока не появится итог проверки.
 
+### Если старая версия установщика упала на `UnicodeDecodeError: cp1251`
+
+Это означает, что Windows попыталась прочитать UTF-8-файл PerspectiveFields
+в системной кодировке. Уже скачанные PyTorch и репозитории удалять не нужно.
+Обновите ветку и повторите установщик без повторной установки PyTorch:
+
+```powershell
+Set-Location "$env:USERPROFILE\Desktop\OrienterNav\orienternet-service"
+git pull
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\INSTALL_WINDOWS.ps1" -SkipTorch
+```
+
+Успешный итог содержит строки `perspective2d OK`, `CUDA available: True` и
+`Installation completed`.
+
 ## 6.4. Положить модель
 
 Рекомендуемый путь:
