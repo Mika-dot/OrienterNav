@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1-beta
+
+- allowed the HTTP OrienterNet endpoint inside an encrypted Tailscale tunnel;
+- added an automatic OpenStreetMap raster fallback when OpenFreeMap is unavailable;
+- added automatic recovery after a CameraX capture-session failure;
+- exposed the application version in the settings title to prevent APK mix-ups.
+
 ## 0.5.0-beta
 
 - replaced route-only progress simulation with two-dimensional short-gap dead reckoning;

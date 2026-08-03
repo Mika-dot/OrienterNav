@@ -58,6 +58,9 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var manualStartMode = false
     private var navigating = false
     private var cameraReady = false
+    private var usingFallbackMap = false
+    private var mapRendered = false
+    private var mapInteractionsBound = false
     private var gpsTrusted = true
     private var spoofCounter = 0
     private var lastServerStatus = "камера не настроена"
@@ -133,8 +136,37 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
     override fun onMapReady(mapLibreMap: MapLibreMap) {
         map = mapLibreMap
+        binding.mapView.addOnDidFinishRenderingMapListener { fully ->
+            if (fully) mapRendered = true
+        }
+        binding.mapView.addOnDidFailLoadingMapListener { error ->
+            if (!usingFallbackMap) runOnUiThread { loadFallbackMap(mapLibreMap, error) }
+        }
         mapLibreMap.setStyle(Style.Builder().fromUri(BuildConfig.MAP_STYLE)) {
-            mapLibreMap.cameraPosition = CameraPosition.Builder().target(LatLng(55.751244, 37.618423)).zoom(11.0).build()
+            finishMapSetup(mapLibreMap)
+        }
+        handler.postDelayed({
+            if (!mapRendered && !usingFallbackMap) {
+                loadFallbackMap(mapLibreMap, "OpenFreeMap не отдал тайлы за 8 секунд")
+            }
+        }, 8_000L)
+    }
+
+    private fun loadFallbackMap(mapLibreMap: MapLibreMap, reason: String) {
+        if (usingFallbackMap) return
+        usingFallbackMap = true
+        mapRendered = false
+        setStatus("Подключаю резервную карту…", reason.take(90))
+        mapLibreMap.setStyle(Style.Builder().fromJson(FALLBACK_MAP_STYLE)) {
+            finishMapSetup(mapLibreMap)
+            setStatus("Куда едем?", "Резервная карта OSM · введите адрес или нажмите на карту")
+        }
+    }
+
+    private fun finishMapSetup(mapLibreMap: MapLibreMap) {
+        mapLibreMap.cameraPosition = CameraPosition.Builder().target(LatLng(55.751244, 37.618423)).zoom(11.0).build()
+        if (!mapInteractionsBound) {
+            mapInteractionsBound = true
             mapLibreMap.addOnMapLongClickListener { p ->
                 val selected = GeoPoint(p.latitude, p.longitude)
                 if (manualStartMode) {
@@ -145,8 +177,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                 }
                 true
             }
-            setStatus("Куда едем?", "Введите адрес или долго нажмите на карту")
         }
+        setStatus("Куда едем?", "Введите адрес или долго нажмите на карту")
     }
 
     private fun requestPermissionsIfNeeded() {
@@ -438,7 +470,14 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         cameraSampler.captureJpeg { frameResult ->
             frameResult.onFailure {
                 requestBusy.set(false)
-                runOnUiThread { lastServerStatus = "камера: ${it.message}" }
+                runOnUiThread {
+                    lastServerStatus = "камера: ${it.message}"
+                    if (it.message?.contains("submit capture request", ignoreCase = true) == true) {
+                        cameraReady = false
+                        lastServerStatus = "камера перезапускается…"
+                        handler.postDelayed({ ensureCamera() }, 900L)
+                    }
+                }
             }
             frameResult.onSuccess { bytes ->
                 val quality = FrameQualityGate.assess(bytes)
@@ -497,7 +536,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         dialog.visualEnabled.isChecked = preferences.getBoolean("visual_enabled", true)
         dialog.debugPreview.isChecked = preferences.getBoolean("debug_preview", false)
         AlertDialog.Builder(this)
-            .setTitle("Навигация и камера")
+            .setTitle("Навигация и камера · ${BuildConfig.VERSION_NAME}")
             .setView(dialog.root)
             .setPositiveButton("Сохранить") { _, _ ->
                 preferences.edit()
@@ -538,6 +577,28 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) tts?.language = Locale("ru", "RU")
+    }
+
+    companion object {
+        private val FALLBACK_MAP_STYLE = """
+            {
+              "version": 8,
+              "name": "OrienterNav OSM fallback",
+              "sources": {
+                "osm": {
+                  "type": "raster",
+                  "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+                  "tileSize": 256,
+                  "maxzoom": 19,
+                  "attribution": "© OpenStreetMap contributors"
+                }
+              },
+              "layers": [
+                {"id": "background", "type": "background", "paint": {"background-color": "#F5F1EB"}},
+                {"id": "osm", "type": "raster", "source": "osm", "minzoom": 0, "maxzoom": 22}
+              ]
+            }
+        """.trimIndent()
     }
 
     override fun onStart() { super.onStart(); binding.mapView.onStart() }
