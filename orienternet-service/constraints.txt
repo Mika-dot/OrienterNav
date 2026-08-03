@@ -1,5 +1,10 @@
-torch==2.1.2
-torchvision==0.16.2
+# Optional compatibility constraints for the tested Windows/Python 3.11 setup.
+# Do not install this file by itself.
+#
+# CUDA PyTorch is installed separately by INSTALL_WINDOWS.ps1 from the
+# official PyTorch wheel index. Keeping torch out of this file prevents pip
+# from silently replacing the CUDA build with a CPU-only or incompatible build.
+
 numpy==1.26.4
-pytorch-lightning==1.9.5
-torchmetrics==0.11.4
+omegaconf==2.3.0
+pyequilib==0.3.0
