@@ -1,6 +1,11 @@
 package com.mikadot.osmlocnav
 
-import kotlin.math.*
+import kotlin.math.asin
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 data class GeoPoint(val lat: Double, val lon: Double)
 
@@ -30,7 +35,7 @@ object Geo {
         val dl = Math.toRadians(b.lon - a.lon)
         val y = sin(dl) * cos(p2)
         val x = cos(p1) * sin(p2) - sin(p1) * cos(p2) * cos(dl)
-        return (Math.toDegrees(atan2(y, x)) + 360.0) % 360.0
+        return normalizeBearing(Math.toDegrees(atan2(y, x)))
     }
 
     fun interpolate(a: GeoPoint, b: GeoPoint, t: Double): GeoPoint {
@@ -38,11 +43,36 @@ object Geo {
         return GeoPoint(a.lat + (b.lat - a.lat) * k, a.lon + (b.lon - a.lon) * k)
     }
 
+    /** Move from [point] by a short local distance. */
+    fun advance(point: GeoPoint, distanceMeters: Double, bearingDeg: Double): GeoPoint {
+        if (distanceMeters == 0.0) return point
+        val angle = Math.toRadians(bearingDeg)
+        val east = sin(angle) * distanceMeters
+        val north = cos(angle) * distanceMeters
+        val dLat = north / R
+        val dLon = east / (R * cos(Math.toRadians(point.lat)).coerceAtLeast(1e-6))
+        return GeoPoint(point.lat + Math.toDegrees(dLat), point.lon + Math.toDegrees(dLon))
+    }
+
     fun localXY(origin: GeoPoint, p: GeoPoint): Pair<Double, Double> {
         val y = Math.toRadians(p.lat - origin.lat) * R
         val x = Math.toRadians(p.lon - origin.lon) * R * cos(Math.toRadians(origin.lat))
         return x to y
     }
+
+    fun normalizeBearing(value: Double): Double = ((value % 360.0) + 360.0) % 360.0
+
+    fun signedAngleDifference(target: Double, current: Double): Double {
+        var value = normalizeBearing(target) - normalizeBearing(current)
+        if (value > 180.0) value -= 360.0
+        if (value < -180.0) value += 360.0
+        return value
+    }
+
+    fun angleDifference(a: Double, b: Double): Double = kotlin.math.abs(signedAngleDifference(a, b))
+
+    fun blendBearing(current: Double, target: Double, gain: Double): Double =
+        normalizeBearing(current + signedAngleDifference(target, current) * gain.coerceIn(0.0, 1.0))
 }
 
 class RouteProjector(private val points: List<GeoPoint>) {
@@ -54,15 +84,26 @@ class RouteProjector(private val points: List<GeoPoint>) {
         totalMeters = cumulative.lastOrNull() ?: 0.0
     }
 
-    fun project(p: GeoPoint): RoutePosition {
+    /**
+     * Projects a point onto the route. When [aroundIndex] is supplied only a local
+     * window is searched, preventing jumps to a crossing or a parallel part of a
+     * long route. A global projection remains available for route initialization.
+     */
+    fun project(
+        p: GeoPoint,
+        aroundIndex: Int? = null,
+        windowSegments: Int = 90,
+    ): RoutePosition {
         require(points.isNotEmpty())
         if (points.size == 1) return RoutePosition(points[0], 0.0, 0.0, Geo.distance(p, points[0]), 0)
+        val first = aroundIndex?.let { (it - windowSegments).coerceAtLeast(0) } ?: 0
+        val lastExclusive = aroundIndex?.let { (it + windowSegments + 1).coerceAtMost(points.lastIndex) } ?: points.lastIndex
         var bestD2 = Double.POSITIVE_INFINITY
-        var bestPoint = points[0]
-        var bestProgress = 0.0
-        var bestBearing = Geo.bearing(points[0], points[1])
-        var bestIndex = 0
-        for (i in 0 until points.lastIndex) {
+        var bestPoint = points[first]
+        var bestProgress = cumulative[first]
+        var bestBearing = Geo.bearing(points[first], points[first + 1])
+        var bestIndex = first
+        for (i in first until lastExclusive) {
             val origin = points[i]
             val (bx, by) = Geo.localXY(origin, points[i + 1])
             val (px, py) = Geo.localXY(origin, p)
@@ -89,12 +130,12 @@ class RouteProjector(private val points: List<GeoPoint>) {
         var i = cumulative.binarySearch(d)
         if (i < 0) i = (-i - 2).coerceIn(0, points.lastIndex - 1)
         if (i >= points.lastIndex) i = points.lastIndex - 1
-        val seg = (cumulative[i + 1] - cumulative[i]).coerceAtLeast(1e-6)
-        val t = (d - cumulative[i]) / seg
+        val segment = (cumulative[i + 1] - cumulative[i]).coerceAtLeast(1e-6)
+        val t = (d - cumulative[i]) / segment
         return RoutePosition(Geo.interpolate(points[i], points[i + 1], t), d, Geo.bearing(points[i], points[i + 1]), 0.0, i)
     }
 
-    fun corridor(centerIndex: Int, radius: Int = 20): List<GeoPoint> {
+    fun corridor(centerIndex: Int, radius: Int = 35): List<GeoPoint> {
         val from = (centerIndex - radius).coerceAtLeast(0)
         val to = (centerIndex + radius + 1).coerceAtMost(points.size)
         return points.subList(from, to)

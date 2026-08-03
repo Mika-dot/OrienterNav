@@ -11,8 +11,8 @@ android {
         applicationId = "com.mikadot.osmlocnav"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0-demo"
+        versionCode = 5
+        versionName = "0.5.0-beta"
         buildConfigField("String", "MAP_STYLE", "\"https://tiles.openfreemap.org/styles/liberty\"")
         buildConfigField("String", "ROUTER_URL", "\"https://router.project-osrm.org\"")
     }

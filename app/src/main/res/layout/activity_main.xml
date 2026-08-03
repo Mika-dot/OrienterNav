@@ -2,62 +2,279 @@
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/nav_surface">
 
     <org.maplibre.android.maps.MapView
         android:id="@+id/mapView"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintTop_toTopOf="parent" />
 
-    <LinearLayout
+    <com.google.android.material.card.MaterialCardView
         android:id="@+id/statusPanel"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_margin="10dp"
-        android:background="@color/panel"
-        android:elevation="8dp"
-        android:orientation="vertical"
-        android:padding="10dp"
-        app:layout_constraintTop_toTopOf="parent"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="14dp"
+        android:layout_marginEnd="14dp"
+        android:elevation="10dp"
+        app:cardBackgroundColor="@color/panel"
+        app:cardCornerRadius="22dp"
+        app:cardElevation="10dp"
+        app:strokeColor="@color/panel_stroke"
+        app:strokeWidth="1dp"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/cameraPreview">
+        app:layout_constraintTop_toTopOf="parent">
 
-        <TextView android:id="@+id/statusText" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Выберите старт и цель" android:textColor="#111827" android:textSize="16sp" android:textStyle="bold" />
-        <TextView android:id="@+id/detailText" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="GPS: ожидание · OSMLoc: не подключён" android:textColor="#374151" android:textSize="13sp" />
-    </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="18dp"
+            android:paddingTop="13dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="13dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <View
+                    android:id="@+id/statusIndicator"
+                    android:layout_width="11dp"
+                    android:layout_height="11dp"
+                    android:layout_marginEnd="10dp"
+                    android:background="@drawable/status_dot_warn" />
+
+                <TextView
+                    android:id="@+id/statusText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="Куда едем?"
+                    android:textColor="@color/nav_text"
+                    android:textSize="17sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/settingsButton"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:layout_width="48dp"
+                    android:layout_height="44dp"
+                    android:contentDescription="Настройки"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:minWidth="0dp"
+                    android:text="⚙"
+                    android:textColor="@color/nav_text"
+                    android:textSize="21sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/detailText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="21dp"
+                android:layout_marginTop="2dp"
+                android:layout_marginEnd="8dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:text="Введите адрес или долго нажмите на карту"
+                android:textColor="@color/nav_text_secondary"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/navigationPanel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="14dp"
+        android:visibility="gone"
+        app:cardBackgroundColor="@color/nav_card"
+        app:cardCornerRadius="22dp"
+        app:cardElevation="9dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/statusPanel">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="18dp">
+
+            <TextView
+                android:id="@+id/maneuverText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:text="Двигайтесь по маршруту"
+                android:textColor="@color/white"
+                android:textSize="21sp" />
+
+            <TextView
+                android:id="@+id/routeSummary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:text="0 км · 0 мин"
+                android:textColor="#DCE6FF"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
 
     <androidx.camera.view.PreviewView
         android:id="@+id/cameraPreview"
-        android:layout_width="116dp"
-        android:layout_height="88dp"
-        android:layout_margin="10dp"
-        android:background="#CC000000"
-        android:elevation="10dp"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        android:layout_width="128dp"
+        android:layout_height="92dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="14dp"
+        android:alpha="0.94"
+        android:background="#D9000000"
+        android:elevation="12dp"
+        android:visibility="invisible"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/navigationPanel" />
 
-    <LinearLayout
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/recenterButton"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="12dp"
+        android:backgroundTint="@color/panel"
+        android:contentDescription="Вернуться к позиции"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:minWidth="0dp"
+        android:text="◎"
+        android:textColor="@color/nav_primary"
+        android:textSize="25sp"
+        app:cornerRadius="18dp"
+        app:layout_constraintBottom_toTopOf="@id/searchPanel"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:strokeColor="@color/panel_stroke" />
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/searchPanel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
+        android:layout_marginEnd="14dp"
+        android:layout_marginBottom="10dp"
+        app:cardBackgroundColor="@color/panel"
+        app:cardCornerRadius="22dp"
+        app:cardElevation="10dp"
+        app:strokeColor="@color/panel_stroke"
+        app:strokeWidth="1dp"
+        app:layout_constraintBottom_toTopOf="@id/buttons"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="8dp">
+
+            <EditText
+                android:id="@+id/destinationInput"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_weight="1"
+                android:background="@android:color/transparent"
+                android:hint="Куда едем?"
+                android:imeOptions="actionSearch"
+                android:inputType="textPostalAddress"
+                android:maxLines="1"
+                android:paddingStart="4dp"
+                android:textColor="@color/nav_text"
+                android:textColorHint="@color/nav_text_secondary"
+                android:textSize="17sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/searchButton"
+                android:layout_width="52dp"
+                android:layout_height="48dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minWidth="0dp"
+                android:text="→"
+                android:textSize="22sp"
+                app:cornerRadius="17dp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <com.google.android.material.card.MaterialCardView
         android:id="@+id/buttons"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_margin="10dp"
-        android:background="@color/panel"
-        android:elevation="8dp"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:padding="8dp"
+        android:layout_marginStart="14dp"
+        android:layout_marginEnd="14dp"
+        android:layout_marginBottom="14dp"
+        app:cardBackgroundColor="@color/panel"
+        app:cardCornerRadius="22dp"
+        app:cardElevation="10dp"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
 
-        <com.google.android.material.button.MaterialButton android:id="@+id/gpsButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="GPS старт" />
-        <com.google.android.material.button.MaterialButton android:id="@+id/manualButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:layout_weight="1" android:text="Старт вручную" />
-        <com.google.android.material.button.MaterialButton android:id="@+id/goButton" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:layout_weight="1" android:text="Поехали" />
-        <com.google.android.material.button.MaterialButton android:id="@+id/settingsButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="⚙" />
-    </LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/gpsButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_weight="1"
+                android:text="Моё место"
+                android:textColor="@color/nav_text"
+                app:cornerRadius="16dp"
+                app:strokeColor="@color/panel_stroke" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/manualButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_marginStart="7dp"
+                android:layout_weight="1"
+                android:text="Старт на карте"
+                android:textColor="@color/nav_text"
+                app:cornerRadius="16dp"
+                app:strokeColor="@color/panel_stroke" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/goButton"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_marginStart="7dp"
+                android:layout_weight="1.12"
+                android:enabled="false"
+                android:text="Поехали"
+                android:textSize="15sp"
+                app:cornerRadius="16dp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

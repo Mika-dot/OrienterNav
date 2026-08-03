@@ -1,6 +1,56 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
-    <EditText android:id="@+id/serverUrl" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="http://192.168.1.10:8000" android:inputType="textUri" />
-    <EditText android:id="@+id/apiKey" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="API ключ" android:inputType="textPassword" />
-    <EditText android:id="@+id/frameInterval" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Интервал кадров, мс" android:inputType="number" />
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="22dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="22dp"
+    android:paddingBottom="8dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Адрес OrienterNet-сервера. Для телефона обычно используется Tailscale IP компьютера и порт 1000."
+        android:textColor="@color/nav_text_secondary"
+        android:textSize="13sp" />
+
+    <EditText
+        android:id="@+id/serverUrl"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:hint="http://100.x.x.x:1000"
+        android:inputType="textUri"
+        android:maxLines="1" />
+
+    <EditText
+        android:id="@+id/apiKey"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Тот же API-ключ, что в .env"
+        android:inputType="textPassword"
+        android:maxLines="1" />
+
+    <EditText
+        android:id="@+id/frameInterval"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Интервал кадров, мс (рекомендуется 2000)"
+        android:inputType="number"
+        android:maxLines="1" />
+
+    <com.google.android.material.switchmaterial.SwitchMaterial
+        android:id="@+id/visualEnabled"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:checked="true"
+        android:text="Использовать визуальную коррекцию" />
+
+    <com.google.android.material.switchmaterial.SwitchMaterial
+        android:id="@+id/debugPreview"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Показывать превью камеры (диагностика)" />
 </LinearLayout>
