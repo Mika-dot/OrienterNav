@@ -1,776 +1,417 @@
-# OrienterNav
+# OrienterNav / OSMLocNav
 
-OrienterNav is an Android navigation application based on OpenStreetMap with an optional visual localization backend powered by Facebook OrienterNet.
+Android-навигатор на OpenStreetMap с внешним сервером визуальной локализации Facebook OrienterNet.
 
-Unlike a conventional navigator, OrienterNav is able to verify GPS coordinates using the camera image. This makes it possible to detect GPS spoofing, temporary GPS failures, multipath effects in dense urban areas and recover navigation using visual localization.
+Обычная навигация, построение маршрута и отображение карты работают на телефоне. Для визуального уточнения координат, оценки направления и проверки GPS используется отдельный FastAPI-сервер на Windows или Linux с NVIDIA GPU.
 
-The Android application can be used independently as a normal navigator. Visual localization is provided by an external FastAPI service running on a PC equipped with an NVIDIA GPU.
+## Что находится в репозитории
 
----
-
-# Features
-
-## Navigation
-
-- OpenStreetMap support
-- MapLibre rendering
-- Free OpenFreeMap tiles
-- Route planning
-- Voice navigation
-- Russian turn-by-turn instructions
-- Address search
-- Manual destination selection
-- Route recalculation
-- Estimated arrival time
-- Distance remaining
-
-## Camera
-
-- CameraX integration
-- Forward camera capture
-- Adaptive frame rate
-- Automatic frame compression
-- Secure image transmission
-
-## Visual localization
-
-- Facebook OrienterNet integration
-- Automatic OSM download
-- Local OSM cache
-- GPU inference
-- Bayesian localization
-- Route-based search prior
-- Heading estimation
-- Confidence estimation
-- GPS verification
-- GPS spoofing detection
-
-## Backend
-
-- FastAPI
-- PyTorch CUDA inference
-- Lazy model loading
-- Automatic warmup
-- OSM raster generation
-- REST API
-- API key authentication
-
----
-
-# Project structure
-
-```
+```text
 OrienterNav/
-│
-├── app/                       Android application
-├── orienternet-service/       FastAPI visual localization backend
-├── docs/
-├── gradle/
-└── README.md
+├─ app/                         Android-приложение
+├─ orienternet-service/         FastAPI-сервер OrienterNet
+├─ docs/                        Архитектура и API
+├─ gradle/                      Gradle wrapper
+├─ README.md                    Основная инструкция
+└─ orienternet_mgl.ckpt         Модель, если положить её в корень
 ```
 
-The project consists of two independent parts.
+Внешние исследовательские проекты не включены в репозиторий и устанавливаются отдельно:
 
-## Android application
+- Facebook Research OrienterNet (`maploc`)
+- PerspectiveFields (`perspective2d`)
 
-Runs on the phone.
-
-Responsible for:
-
-- navigation
-- route planning
-- GPS
-- camera capture
-- communication with the backend
-- displaying localization results
-
-## OrienterNet Service
-
-Runs on a Windows or Linux PC with an NVIDIA GPU.
-
-Responsible for:
-
-- loading the OrienterNet model
-- downloading OpenStreetMap data
-- rendering raster maps
-- visual localization
-- returning estimated latitude, longitude and heading
+Windows-установщик умеет сам клонировать и подключать оба проекта.
 
 ---
 
-# System requirements
+# Быстрый запуск на Windows
 
-## Android
+Проверенная конфигурация:
 
-- Android 8.0+
-- Camera
-- GPS
-- Internet connection
-
----
-
-## Windows server
-
-Recommended configuration:
-
-- Windows 10/11
+- Windows 10/11 x64
 - Python 3.11
 - NVIDIA GPU
-- CUDA-enabled PyTorch
-- 16 GB RAM minimum
-- 12 GB GPU memory recommended
+- CUDA-совместимый драйвер
+- PyTorch с CUDA
+- 16 ГБ ОЗУ или больше
+- около 12 ГБ VRAM рекомендуется для стандартной модели
 
-The project has been tested on:
+## 1. Клонировать нужную ветку
 
-- Windows 10 Pro
-- Python 3.11
-- NVIDIA RTX 5070 (12 GB)
-- CUDA 12.x
-- PyTorch 2.7
-
----
-
-## Linux server
-
-Ubuntu 22.04 or newer
-
-or
-
-Docker + NVIDIA Container Toolkit
-
----
-
-# Repository dependencies
-
-This repository uses external projects which are **not included** inside this repository.
-
-Before starting the backend they must be installed.
-
-## Facebook OrienterNet
-
-https://github.com/facebookresearch/OrienterNet
-
-Required for visual localization.
-
-Installed as editable package:
-
-```bash
-pip install -e OrienterNet
+```powershell
+git clone -b osmlocnav-v0.2-demo https://github.com/Mika-dot/OrienterNav.git
+cd OrienterNav\orienternet-service
 ```
 
----
+## 2. Запустить автоматическую установку
 
-## PerspectiveFields
-
-https://github.com/jinlinyi/PerspectiveFields
-
-Required by OrienterNet.
-
-Installed as editable package:
-
-```bash
-pip install -e PerspectiveFields
+```bat
+INSTALL_WINDOWS.bat
 ```
 
----
+Скрипт:
 
-# Python environment
+- создаёт `.venv` на Python 3.11;
+- обновляет pip/setuptools/wheel;
+- ставит FastAPI и зависимости сервиса;
+- ставит CUDA-сборку PyTorch;
+- ставит полный runtime OrienterNet;
+- клонирует `OrienterNet` и `PerspectiveFields` в корень проекта;
+- устанавливает `maploc` и `perspective2d` в editable-режиме;
+- создаёт `.env` из `.env.example`;
+- проверяет импорты, CUDA и GPU.
 
-Create a virtual environment.
+По умолчанию PyTorch ставится из официального индекса CUDA 12.8. Для другого индекса запустите PowerShell-скрипт вручную:
 
-```bash
-python -m venv venv
+```powershell
+powershell -ExecutionPolicy Bypass -File .\INSTALL_WINDOWS.ps1 `
+  -TorchIndex https://download.pytorch.org/whl/cu128
 ```
 
-Activate it.
+## 3. Положить checkpoint
 
-Windows
+Рекомендуемый путь:
 
-```cmd
-venv\Scripts\activate
+```text
+OrienterNav\orienternet_mgl.ckpt
 ```
 
-Linux
+Сервис также проверяет:
 
-```bash
-source venv/bin/activate
+```text
+OrienterNav\orienternet-service\orienternet_mgl.ckpt
+OrienterNet\experiments\orienternet_mgl.ckpt
 ```
 
-Upgrade pip.
+Либо укажите полный путь в `orienternet-service\.env`:
 
-```bash
-python -m pip install --upgrade pip
+```dotenv
+ORIENTERNET_CHECKPOINT=C:\Models\orienternet_mgl.ckpt
 ```
 
-Install project dependencies.
+Если checkpoint не найден, оригинальный OrienterNet может попытаться скачать модель при первой загрузке.
 
-```bash
-pip install -r orienternet-service/requirements.txt
+## 4. Настроить `.env`
+
+Откройте:
+
+```text
+orienternet-service\.env
 ```
 
-Install editable repositories.
+Минимально замените API-ключ:
 
-```bash
-pip install -e OrienterNet
-pip install -e PerspectiveFields
+```dotenv
+ORIENTERNET_API_KEY=replace-with-your-own-long-random-key
+ORIENTERNET_PORT=1000
+ORIENTERNET_HOST=0.0.0.0
 ```
 
-The backend is now ready for configuration.
+Этот же API-ключ затем вводится в настройках Android-приложения.
 
-# Windows installation
+## 5. Запустить сервер
 
-The Windows version is the primary development and testing environment for this project.
-
-The backend has been verified on:
-
-- Windows 10 Pro
-- Python 3.11
-- CUDA 12.x
-- PyTorch 2.7
-- NVIDIA RTX 5070
-
----
-
-## 1. Clone the repository
-
-```bash
-git clone https://github.com/<your_repository>.git
-cd OrienterNav
+```bat
+START_WINDOWS.bat
 ```
 
----
+Скрипт загружает переменные из `.env`, проверяет окружение и запускает:
 
-## 2. Create Python virtual environment
-
-```bash
-python -m venv venv
+```text
+http://0.0.0.0:1000
 ```
 
-Activate it.
+Проверка локально:
 
-```cmd
-venv\Scripts\activate
-```
-
----
-
-## 3. Upgrade pip
-
-```bash
-python -m pip install --upgrade pip
-```
-
----
-
-## 4. Install Python packages
-
-```bash
-pip install -r orienternet-service/requirements.txt
-```
-
----
-
-## 5. Clone OrienterNet
-
-Clone the original Facebook repository.
-
-```bash
-git clone https://github.com/facebookresearch/OrienterNet.git
-```
-
-Install it.
-
-```bash
-pip install -e OrienterNet
-```
-
----
-
-## 6. Clone PerspectiveFields
-
-```bash
-git clone https://github.com/jinlinyi/PerspectiveFields.git
-```
-
-Install it.
-
-```bash
-pip install -e PerspectiveFields
-```
-
----
-
-## 7. Configure the backend
-
-Go to the backend directory.
-
-```bash
-cd orienternet-service
-```
-
-Copy the configuration.
-
-Windows
-
-```cmd
-copy .env.example .env
-```
-
-Linux
-
-```bash
-cp .env.example .env
-```
-
-Edit:
-
-```
-ORIENTERNET_API_KEY=
-```
-
-Generate a random API key.
-
-Example:
-
-```
-ORIENTERNET_API_KEY=ReplaceWithYourOwnRandomKey
-```
-
----
-
-## 8. Download model weights
-
-Download the pretrained OrienterNet checkpoint.
-
-Place it into the directory expected by the backend configuration.
-
-The exact filename must match the value configured inside the service.
-
----
-
-## 9. Start the backend
-
-From the `orienternet-service` directory.
-
-```bash
-python -m uvicorn app.main:app --host 0.0.0.0 --port 1000
-```
-
-Expected output:
-
-```
-INFO: Started server process
-INFO: Waiting for application startup.
-INFO: Application startup complete.
-```
-
-During the first localization request the model will be loaded automatically.
-
----
-
-## 10. Verify the server
-
-Health endpoint
-
-```
+```text
 http://127.0.0.1:1000/health
 ```
 
-Expected response
+## 6. Проверить сервер
 
-```json
-{
-  "status":"ok"
-}
+В новом окне:
+
+```bat
+CHECK_WINDOWS.bat
 ```
+
+Полная загрузка модели на GPU:
+
+```bat
+CHECK_WINDOWS.bat warmup
+```
+
+При успешном warmup поле `device` должно быть `cuda`.
 
 ---
 
-## 11. Warmup
+# Ручная установка сервера
 
-The first inference loads the model into GPU memory.
+Используйте этот путь, если автоматический установщик завершился ошибкой.
 
-This may take several seconds.
+```powershell
+cd OrienterNav\orienternet-service
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt -c constraints.txt
+python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+python -m pip install -r requirements-orienternet.txt -c constraints.txt
+cd ..
+git clone https://github.com/facebookresearch/OrienterNet.git
+git clone https://github.com/jinlinyi/PerspectiveFields.git
+.\orienternet-service\.venv\Scripts\python.exe -m pip install -e .\PerspectiveFields --no-deps
+.\orienternet-service\.venv\Scripts\python.exe -m pip install -e .\OrienterNet --no-deps
+cd orienternet-service
+copy .env.example .env
+python VERIFY_WINDOWS.py
+```
 
-Subsequent requests are significantly faster because the model remains loaded.
+## Почему PyTorch ставится отдельно
+
+`torch`, `torchvision` и `torchaudio` не закреплены в обычном `requirements.txt`, потому что требуемая сборка зависит от GPU, драйвера и CUDA. Это также не позволяет pip случайно заменить рабочую CUDA-сборку CPU-вариантом.
+
+## Почему OpenSfM не устанавливается
+
+OpenSfM не требуется для обычного inference OrienterNet. На Windows его сборка часто требует Visual Studio C++ Build Tools и NMake, поэтому он намеренно исключён из стандартной установки.
 
 ---
 
-# Android application
+# Сборка Android APK
 
-Open the project in Android Studio.
+Требования:
 
-Allow Gradle synchronization.
+- Android Studio с Android SDK 35;
+- JDK 17;
+- Android 8.0 или новее.
 
-Build the application.
+Из корня репозитория:
 
-```
-gradlew.bat assembleDebug
-```
-
-APK location:
-
-```
-app/build/outputs/apk/debug/app-debug.apk
+```powershell
+.\gradlew.bat testDebugUnitTest assembleDebug
 ```
 
-Copy the APK to the Android device.
+APK:
 
-Enable installation from unknown sources if required.
+```text
+app\build\outputs\apk\debug\app-debug.apk
+```
 
-Install the application.
+Также APK собирается GitHub Actions в workflow `CI` и публикуется как artifact `OSMLocNav-debug-apk`, если Gradle-сборка прошла успешно.
+
+## Первый запуск Android
+
+1. Установите APK.
+2. Разрешите камеру и геолокацию.
+3. Откройте кнопку настроек `⚙`.
+4. Введите адрес сервера и API-ключ.
+5. Выберите старт через GPS или вручную.
+6. Долгим нажатием выберите точку назначения.
+7. Нажмите `Поехали`.
 
 ---
 
-# Connecting Android and the backend
+# Соединение телефона и сервера через Tailscale
 
-The Android application communicates with the FastAPI backend through HTTP.
+Рекомендуемый вариант — Tailscale на ПК и Android.
 
-The recommended method is Tailscale.
+1. Установите Tailscale на обеих машинах.
+2. Войдите в один аккаунт или одну tailnet.
+3. Узнайте Tailscale IPv4 ПК:
 
-Install Tailscale on both:
-
-- Windows PC
-- Android phone
-
-Login using the same account.
-
-After connection the PC receives an address similar to
-
-```
-100.x.x.x
+```powershell
+tailscale ip -4
 ```
 
-Example
+Пример:
 
-```
+```text
 100.76.107.93
 ```
 
-Configure the Android application to use
+4. Убедитесь, что сервер запущен на `0.0.0.0:1000`.
+5. В настройках Android укажите:
 
+```text
+http://100.76.107.93:1000
 ```
-http://100.xx.xx.xx:1000
+
+`localhost` и `127.0.0.1` на телефоне указывают на сам телефон, а не на ПК.
+
+Проверить доступность с телефона можно, открыв в браузере:
+
+```text
+http://TAILSCALE_IP_ПК:1000/health
 ```
 
-instead of localhost.
-
-Enter the same API key configured inside `.env`.
-
-The phone and the PC no longer need to be connected to the same Wi-Fi network.
+Не публикуйте порт 1000 напрямую в Интернет. Используйте Tailscale, VPN или защищённый reverse proxy.
 
 ---
 
-# First localization test
-
-Launch the backend.
-
-Launch the Android application.
-
-Open the map.
-
-Start navigation.
-
-Enable camera localization.
-
-The Android application will periodically send camera frames to the backend.
-
-The backend will
-
-- generate an OSM raster
-- execute OrienterNet
-- estimate position
-- estimate heading
-- return confidence
-
-Successful localization returns
-
-```json
-{
-    "lat": ...,
-    "lon": ...,
-    "heading_deg": ...,
-    "confidence": ...
-}
-```
-
-The Android application automatically uses these results to validate GPS measurements and improve navigation robustness.
-
-# Linux / Docker deployment
-
-The backend can also be deployed on Linux using Docker.
-
-Requirements:
-
-- Ubuntu 22.04+
-- NVIDIA Driver
-- Docker
-- NVIDIA Container Toolkit
-
-Go to the backend directory.
-
-```bash
-cd orienternet-service
-```
-
-Create configuration.
-
-```bash
-cp .env.example .env
-```
-
-Edit
-
-```
-ORIENTERNET_API_KEY=
-```
-
-Build and start.
-
-```bash
-docker compose up --build -d
-```
-
-Warm up the model.
-
-```bash
-curl \
--H "X-API-Key: YOUR_KEY" \
--X POST \
-http://127.0.0.1:8000/v1/warmup
-```
-
----
-
-# REST API
+# Проверка API вручную
 
 ## Health
 
+```powershell
+curl.exe http://127.0.0.1:1000/health
 ```
-GET /health
-```
-
-Response
-
-```json
-{
-    "status":"ok"
-}
-```
-
----
 
 ## Warmup
 
-```
-POST /v1/warmup
-```
+Без API-ключа:
 
-Loads the model into GPU memory.
-
----
-
-## Localization
-
-```
-POST /v1/localize
+```powershell
+curl.exe -X POST http://127.0.0.1:1000/v1/warmup
 ```
 
-Multipart form fields:
+С API-ключом:
 
-| Parameter | Description |
-|------------|-------------|
-| image | Camera frame |
-| prior_lat | Latitude |
-| prior_lon | Longitude |
-| prior_heading_deg | Heading (optional) |
-| search_radius_m | Search radius |
+```powershell
+curl.exe -X POST http://127.0.0.1:1000/v1/warmup `
+  -H "X-API-Key: YOUR_KEY"
+```
 
-Successful response
+## Локализация изображения
+
+```powershell
+curl.exe -X POST http://127.0.0.1:1000/v1/localize `
+  -H "X-API-Key: YOUR_KEY" `
+  -F "image=@C:\path\photo.jpg" `
+  -F "prior_lat=55.816949" `
+  -F "prior_lon=37.663309" `
+  -F "search_radius_m=128"
+```
+
+Пример успешного ответа:
 
 ```json
 {
-    "lat":55.81695,
-    "lon":37.66329,
-    "heading_deg":284.06,
-    "confidence":0.49,
-    "backend":"orienternet",
-    "processing_ms":6374,
-    "sigma_meters":17.47
+  "lat": 55.81695284615412,
+  "lon": 37.66329112732796,
+  "heading_deg": 284.0625,
+  "confidence": 0.4971306538079562,
+  "backend": "orienternet",
+  "processing_ms": 6374,
+  "sigma_meters": 17.47
 }
 ```
 
+`POST /v1/localize` поддерживает оба контракта:
+
+- Android: `frame` + JSON-строка `metadata`;
+- старый клиент: `image`, `prior_lat`, `prior_lon`, `search_radius_m`, `prior_heading_deg`.
+
 ---
 
-# Troubleshooting
+# Исправления совместимости, уже включённые в сервер
 
-## ModuleNotFoundError
+## PyTorch 2.6 и новее
 
-If Python cannot import `maploc` or `perspective2d`, ensure both external repositories have been installed as editable packages.
+Новые версии PyTorch по умолчанию загружают checkpoint с `weights_only=True`. Старый Lightning checkpoint OrienterNet требует доверенной полной загрузки. Сервер временно вызывает `torch.load(..., weights_only=False)` только для этого checkpoint.
 
-```bash
-pip install -e OrienterNet
-pip install -e PerspectiveFields
+Используйте только официальный или самостоятельно проверенный checkpoint. Полная pickle-загрузка чужого файла небезопасна.
+
+## TemporaryFile в Windows
+
+Windows не позволяет сторонней библиотеке повторно открыть активный `NamedTemporaryFile`. Сервер теперь:
+
+1. создаёт файл с `delete=False`;
+2. закрывает его до запуска OrienterNet;
+3. удаляет в блоке `finally`.
+
+## Автоматический поиск checkpoint
+
+`/health` возвращает:
+
+- `checkpoint_path`;
+- `checkpoint_exists`;
+- `checkpoint_source`;
+- `model_loaded`;
+- `device`.
+
+## Кэш OSM
+
+OSM-данные сохраняются в `orienternet-service\cache`, а соседние запросы повторно используют уже подготовленные тайлы.
+
+---
+
+# Частые ошибки
+
+## `ModuleNotFoundError: maploc`
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ..\OrienterNet --no-deps
 ```
 
----
+## `ModuleNotFoundError: perspective2d`
 
-## PyTorch 2.6+
-
-PyTorch 2.6 introduced secure checkpoint loading (`weights_only=True` by default).
-
-Older OrienterNet checkpoints are incompatible with the default loader.
-
-The backend has already been updated to use a compatible loading method.
-
-No additional action is required.
-
----
-
-## CUDA not detected
-
-Verify:
-
-```bash
-python -c "import torch;print(torch.cuda.is_available())"
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ..\PerspectiveFields --no-deps
 ```
 
-Expected output
+## CUDA недоступна
 
-```
-True
-```
-
-If the result is `False`, reinstall the CUDA-enabled PyTorch build.
-
----
-
-## First request is slow
-
-Normal behavior.
-
-During the first request the backend
-
-- loads the checkpoint
-- initializes CUDA
-- creates the neural network
-- allocates GPU memory
-
-Subsequent requests are much faster.
-
----
-
-## Windows temporary file error
-
-Older versions of the backend could fail because Windows does not allow reopening a `NamedTemporaryFile` while it is still open.
-
-The backend has been updated to close the temporary file before inference and remove it after processing.
-
----
-
-## HTTP 422
-
-Usually indicates missing multipart parameters.
-
-Required fields:
-
-```
-image
-prior_lat
-prior_lon
-search_radius_m
+```powershell
+.\.venv\Scripts\python.exe -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 ```
 
----
+Если вывод `False`, проверьте драйвер NVIDIA и переустановите CUDA-сборку PyTorch.
 
 ## HTTP 401
 
-Invalid API key.
+API-ключ в Android не совпадает с `ORIENTERNET_API_KEY` в `.env`.
 
-Verify
+## HTTP 400 или 422
 
-```
-ORIENTERNET_API_KEY
-```
-
-matches the key configured inside the Android application.
-
----
+Проверьте обязательные координаты, изображение и тип multipart-полей.
 
 ## HTTP 503
 
-Backend failed during localization.
+Ошибка внутри inference. Смотрите текст `detail` и консоль сервера. Частые причины:
 
-Typical causes:
+- checkpoint отсутствует или повреждён;
+- не установлена библиотека;
+- CUDA не работает;
+- OSM-запрос недоступен;
+- недостаточно памяти GPU.
 
-- missing checkpoint
-- CUDA initialization failure
-- missing Python dependency
-- incompatible model version
+## Первый запрос медленный
 
-Consult the backend log for details.
-
----
-
-# Performance
-
-Typical inference time depends on
-
-- GPU
-- search radius
-- raster resolution
-
-Example hardware
-
-| GPU | Approximate localization time |
-|------|------------------------------:|
-| RTX 5070 | 5–7 seconds |
-| RTX 4090 | Faster |
-| CPU only | Not recommended |
+Это нормально: загружается checkpoint, инициализируется CUDA и создаются OSM-тайлы. Используйте `CHECK_WINDOWS.bat warmup` до начала работы.
 
 ---
 
-# Security
+# Файлы зависимостей
 
-The backend receives camera frames from the Android device.
-
-For deployments outside a trusted local network it is strongly recommended to:
-
-- use Tailscale
-- use HTTPS
-- keep the API key private
-- never expose the backend directly to the Internet without authentication
-
----
-
-# License
-
-This repository combines original project code with third-party components.
-
-The Android application is distributed under this repository's license.
-
-Facebook OrienterNet and its pretrained checkpoints are distributed under their respective licenses and may impose additional restrictions, particularly for commercial use.
-
-Refer to:
-
-- THIRD_PARTY_NOTICES.md
-- LICENSE
-- OrienterNet repository
-
-for complete licensing information.
+- `orienternet-service/requirements.txt` — FastAPI, тесты и лёгкий mock-runtime;
+- `orienternet-service/requirements-orienternet.txt` — полный runtime модели;
+- `orienternet-service/constraints.txt` — ограничения совместимости без принудительной установки PyTorch;
+- `orienternet-service/INSTALL_WINDOWS.ps1` — автоматическая установка;
+- `orienternet-service/VERIFY_WINDOWS.py` — проверка библиотек, CUDA и checkpoint;
+- `orienternet-service/START_WINDOWS.ps1` — загрузка `.env` и запуск сервера;
+- `orienternet-service/CHECK_WINDOWS.ps1` — health/warmup.
 
 ---
 
-# Acknowledgements
+# Тестовый mock-режим
 
-This project uses and builds upon the work of:
+Для проверки API без модели и GPU:
 
-- Facebook Research — OrienterNet
-- PerspectiveFields
-- OpenStreetMap contributors
-- MapLibre
-- OpenFreeMap
-- OSRM
+```powershell
+$env:ORIENTERNET_MOCK="1"
+$env:ORIENTERNET_API_KEY="test-key"
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 1000
+```
 
-Special thanks to the open-source community for making high-quality geospatial and computer vision research publicly available.
+Mock-режим проверяет транспорт и контракт API, но не выполняет визуальную локализацию.
 
+---
+
+# Лицензии
+
+OrienterNav использует сторонние компоненты с отдельными лицензиями. OrienterNet и pretrained weights могут иметь ограничения на коммерческое применение. Перед распространением или коммерческим использованием проверьте:
+
+- `LICENSE`;
+- `THIRD_PARTY_NOTICES.md`;
+- лицензии OrienterNet и PerspectiveFields.
