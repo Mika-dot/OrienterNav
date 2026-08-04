@@ -11,6 +11,12 @@ $RepoRoot = Split-Path $PSScriptRoot -Parent
 $VenvPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 $VenvPip = Join-Path $PSScriptRoot ".venv\Scripts\pip.exe"
 
+# Several upstream setup.py files contain UTF-8 text but open it without an
+# explicit encoding. Windows otherwise falls back to CP1251 and editable
+# installation fails before perspective2d is registered.
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
+
 function Step([string]$Text) {
     Write-Host "`n=== $Text ===" -ForegroundColor Cyan
 }
@@ -24,6 +30,13 @@ function Run-PythonLauncher([string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "Python command failed: $Python $($Arguments -join ' ')" }
 }
 
+function Run-VenvPython([string[]]$Arguments) {
+    & $VenvPython @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Virtual-environment Python command failed: $($Arguments -join ' ')"
+    }
+}
+
 Step "Checking Git"
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw "Git is not installed or is not available in PATH. Install Git for Windows first."
@@ -34,18 +47,18 @@ Step "Creating Python 3.11 virtual environment"
 if (-not (Test-Path $VenvPython)) {
     Run-PythonLauncher @("-m", "venv", ".venv")
 }
-& $VenvPython -m pip install --upgrade pip setuptools wheel
+Run-VenvPython @("-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel")
 
 Step "Installing FastAPI and service dependencies"
-& $VenvPython -m pip install -r requirements.txt -c constraints.txt
+Run-VenvPython @("-m", "pip", "install", "-r", "requirements.txt", "-c", "constraints.txt")
 
 if (-not $SkipTorch) {
     Step "Installing CUDA PyTorch"
-    & $VenvPython -m pip install --upgrade torch torchvision torchaudio --index-url $TorchIndex
+    Run-VenvPython @("-m", "pip", "install", "--upgrade", "torch", "torchvision", "torchaudio", "--index-url", $TorchIndex)
 }
 
 Step "Installing full OrienterNet runtime"
-& $VenvPython -m pip install -r requirements-orienternet.txt -c constraints.txt
+Run-VenvPython @("-m", "pip", "install", "-r", "requirements-orienternet.txt", "-c", "constraints.txt")
 
 if (-not $SkipExternalRepos) {
     $OrienterNetDir = Join-Path $RepoRoot "OrienterNet"
@@ -66,8 +79,8 @@ if (-not $SkipExternalRepos) {
     }
 
     Step "Installing PerspectiveFields and maploc as editable packages"
-    & $VenvPython -m pip install -e $PerspectiveDir --no-deps
-    & $VenvPython -m pip install -e $OrienterNetDir --no-deps
+    Run-VenvPython @("-m", "pip", "install", "-e", $PerspectiveDir, "--no-deps")
+    Run-VenvPython @("-m", "pip", "install", "-e", $OrienterNetDir, "--no-deps")
 }
 
 if (-not (Test-Path ".env")) {

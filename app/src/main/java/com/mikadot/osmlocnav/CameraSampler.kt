@@ -2,6 +2,7 @@ package com.mikadot.osmlocnav
 
 import android.content.Context
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.Camera
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
@@ -22,6 +23,7 @@ class CameraSampler(
     private val busy = AtomicBoolean(false)
     private var capture: ImageCapture? = null
     private var provider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
 
     fun start(onReady: (Boolean, String?) -> Unit) {
         val future = ProcessCameraProvider.getInstance(context)
@@ -34,7 +36,8 @@ class CameraSampler(
                     .setJpegQuality(82)
                     .build()
                 provider?.unbindAll()
-                provider?.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture)
+                camera = provider?.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture)
+                setInitialRoadExposure()
             }.onSuccess { onReady(true, null) }.onFailure { onReady(false, it.message) }
         }, ContextCompat.getMainExecutor(context))
     }
@@ -56,6 +59,24 @@ class CameraSampler(
                     file.delete(); busy.set(false); callback(Result.failure(exception))
                 }
             })
+    }
+
+    fun nudgeExposure(direction: Int) {
+        val info = camera?.cameraInfo?.exposureState ?: return
+        if (!info.isExposureCompensationSupported) return
+        val current = info.exposureCompensationIndex
+        val range = info.exposureCompensationRange
+        val target = (current + direction.coerceIn(-1, 1)).coerceIn(range.lower, range.upper)
+        if (target != current) camera?.cameraControl?.setExposureCompensationIndex(target)
+    }
+
+    /** Phones often expose a dark windscreen scene as if it were a portrait. */
+    private fun setInitialRoadExposure() {
+        val info = camera?.cameraInfo?.exposureState ?: return
+        if (!info.isExposureCompensationSupported) return
+        val range = info.exposureCompensationRange
+        val target = (-2).coerceIn(range.lower, range.upper)
+        camera?.cameraControl?.setExposureCompensationIndex(target)
     }
 
     fun close() { provider?.unbindAll(); executor.shutdown() }

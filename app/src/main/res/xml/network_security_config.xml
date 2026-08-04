@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- API keys and camera frames must not cross a LAN in cleartext. -->
-    <base-config cleartextTrafficPermitted="false" />
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">10.0.2.2</domain>
-    </domain-config>
+    <!-- Tailscale encrypts the tunnel, while the local OrienterNet endpoint
+         intentionally listens over HTTP on a dynamic 100.x address. -->
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

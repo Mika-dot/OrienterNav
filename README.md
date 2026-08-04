@@ -2,6 +2,8 @@
 
 Android-навигатор на OpenStreetMap с внешним сервером визуальной локализации Facebook OrienterNet.
 
+> Новая тестовая ветка `agent/osmlocnav-v0.3` содержит двумерную GPS/INS/OrienterNet оценку положения, автоматическое перестроение маршрута, фильтрацию плохих кадров и обновлённый интерфейс. Полный пошаговый запуск для новичка: [START_HERE_V0_3_RU.md](START_HERE_V0_3_RU.md).
+
 Обычная навигация, построение маршрута и отображение карты работают на телефоне. Для визуального уточнения координат, оценки направления и проверки GPS используется отдельный FastAPI-сервер на Windows или Linux с NVIDIA GPU.
 
 ## Что находится в репозитории
@@ -40,7 +42,7 @@ Windows-установщик умеет сам клонировать и под�
 ## 1. Клонировать нужную ветку
 
 ```powershell
-git clone -b osmlocnav-v0.2-demo https://github.com/Mika-dot/OrienterNav.git
+git clone -b agent/osmlocnav-v0.3 https://github.com/Mika-dot/OrienterNav.git
 cd OrienterNav\orienternet-service
 ```
 

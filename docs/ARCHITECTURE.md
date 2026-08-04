@@ -4,45 +4,64 @@
 
 ```mermaid
 flowchart TD
-    GPS[Android GNSS] --> F[FusionEngine]
-    CAM[Forward camera] --> API[OrienterNet service]
-    OSM[OSM semantic raster] --> API
-    API -->|position, yaw, confidence, sigma| F
-    ROUTE[OSRM route + last trusted progress] --> PRIOR[Visual search prior]
-    PRIOR --> API
-    F --> UI[Map, instructions, warning]
+    GPS[Android GNSS] --> POSE[2D pose estimator]
+    IMU[Rotation + acceleration] --> POSE
+    CAM[Forward camera] --> Q[Frame quality gate]
+    Q --> API[OrienterNet service]
+    API --> V[Visual consensus gate]
+    V --> POSE
+    POSE --> MATCH[Local route projection]
+    MATCH --> OFF[Off-route monitor]
+    OFF -->|confirmed| OSRM[Route rebuild]
+    MATCH --> UI[Map, manoeuvres, confidence]
+    OSRM --> UI
 ```
 
-The normal navigator does not depend on OrienterNet: MapLibre renders OSM data,
-Nominatim resolves user-entered addresses, and OSRM provides a driving route.
-Visual localization is an additional integrity channel.
+## Pose state
 
-## Decision rules
+The active Android application keeps a real two-dimensional position, speed,
+heading and uncertainty. The route is not the position model. IMU prediction
+can therefore follow a real turn away from the original route.
 
-- A single visual estimate never replaces GNSS.
-- Estimates below `0.38` confidence or above `45 m` sigma are discarded.
-- Three recent visual estimates must agree within `28 m`.
-- GPS is rejected only when that cluster also disagrees with GNSS beyond a
-  dynamic threshold derived from GPS accuracy and visual uncertainty.
-- When both channels agree, they are uncertainty-weighted; visual influence is
-  capped so an overconfident frame cannot cause a large jump.
-- During a suspected spoof, the visual search center is predicted from the last
-  trusted route position, elapsed time, and the last plausible speed. It is not
-  taken blindly from the suspicious GPS coordinate.
+- trusted GNSS softly corrects position, speed and bearing;
+- the rotation vector updates heading;
+- linear acceleration is transformed from device axes into the Earth frame
+  when an absolute rotation vector is available;
+- the predicted point advances in the current vehicle heading;
+- uncertainty grows while no absolute GPS or visual fix is available;
+- a physically impossible short-interval GPS jump is rejected;
+- visual recovery needs two consistent frames, or three frames for a large
+  correction.
 
-## Fundamental limit
+## Off-route and rerouting
 
-OrienterNet is a local, prior-conditioned localizer, not a planet-wide image
-search engine. The included server searches at most 256 m around a prior. If the
-application starts while GPS is already displaced by kilometers and there is no
-manual start or earlier trusted route state, the system cannot infer the city
-from one image. This is why a manual origin and route-constrained prior are
-first-class inputs.
+Rerouting is debounced. A single noisy location cannot trigger it. The monitor
+requires a reliable recent absolute fix, sufficient distance from the route,
+and repeated evidence of a heading mismatch or increasing cross-track error.
+After confirmation OSRM is queried from the fused two-dimensional position to
+the unchanged destination. A cooldown prevents request loops.
 
-## Threat model
+## Display smoothing
 
-The system is intended to detect ordinary GNSS loss, gross multipath errors and
-coordinate spoofing. It is not a certified safety or anti-jamming instrument.
-It can fail with stale/incorrect OSM data, featureless roads, darkness, adverse
-weather, blocked camera view, repeated urban geometry, or adversarial signs and
-images. The driver remains responsible for safe operation.
+The map marker receives the continuously predicted state rather than raw GPS
+or raw OrienterNet coordinates. Absolute measurements are blended into the
+state, while MapLibre camera movement is animated at a lower frequency. This
+separates navigation truth from display animation and removes most visible
+jumps.
+
+## Camera failure handling
+
+JPEG frames are evaluated on the phone before upload. Strong overexposure,
+underexposure and low-detail/blurred frames are skipped. Exposure compensation
+is nudged when supported. While frames are unusable, the 2D estimator continues
+from speed, acceleration and heading and reports increasing uncertainty.
+
+## Fundamental limits
+
+Phone IMU is a short-gap aid, not an indefinitely accurate standalone INS.
+Accelerometer bias and imperfect mounting cause drift. The phone must be fixed
+rigidly in the vehicle, and GPS or visual corrections must periodically return.
+
+OrienterNet is a prior-conditioned localizer. The service searches at most 256
+metres around one prior. A future multi-chunk server endpoint can search several
+road hypotheses when the covariance grows beyond one tile.

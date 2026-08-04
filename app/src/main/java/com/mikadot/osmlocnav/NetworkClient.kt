@@ -14,6 +14,7 @@ data class LocalizeResult(
     val lon: Double,
     val headingDeg: Double,
     val confidence: Double,
+    val sigmaMeters: Double,
     val backend: String,
     val processingMs: Long,
     val vehicleCount: Int,
@@ -37,7 +38,7 @@ class NetworkClient(private val baseUrl: String, private val apiKey: String) {
             put("prior_lon", snapshot.position.lon)
             put("route_progress_m", snapshot.progressMeters)
             put("speed_mps", snapshot.speedMps)
-            put("heading_deg", snapshot.routeBearingDeg)
+            put("heading_deg", snapshot.headingDeg)
             put("yaw_delta_deg", snapshot.yawDeltaDeg)
             put("forward_accel_mps2", snapshot.forwardAccelMps2)
             put("stationary", snapshot.stationary)
@@ -65,7 +66,7 @@ class NetworkClient(private val baseUrl: String, private val apiKey: String) {
                         val j = JSONObject(text)
                         LocalizeResult(
                             j.getDouble("lat"), j.getDouble("lon"), j.optDouble("heading_deg", snapshot.routeBearingDeg),
-                            j.optDouble("confidence", 0.0), j.optString("backend", "unknown"),
+                            j.optDouble("confidence", 0.0), j.optDouble("sigma_meters", 80.0), j.optString("backend", "unknown"),
                             j.optLong("processing_ms", 0), j.optInt("vehicle_count", 0),
                             j.optBoolean("accepted", true), j.optString("message", "")
                         )
