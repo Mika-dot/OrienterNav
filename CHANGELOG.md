@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.2-beta
+
+- added GPS/camera zero-velocity hold so accelerometer bias cannot move a parked car;
+- added lightweight frame-to-frame visual motion and turn cues without claiming unreliable monocular scale;
+- constrained uncertain navigation and server priors to the active car-route corridor while retaining a raw pose for real detours;
+- limited every visual correction step and tightened multi-frame consistency to break localization feedback loops;
+- made rerouting require five recent, moving, absolute off-route observations and added a 25-second cooldown;
+- added adaptive road-scene exposure control and a darker initial camera exposure for windscreens at night;
+- stabilized map rotation using the route bearing while road lock is active.
+
 ## 0.5.1-beta
 
 - allowed the HTTP OrienterNet endpoint inside an encrypted Tailscale tunnel;

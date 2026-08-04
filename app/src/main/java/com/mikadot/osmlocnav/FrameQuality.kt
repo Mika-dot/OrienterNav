@@ -7,6 +7,8 @@ data class FrameQuality(
     val acceptable: Boolean,
     val message: String,
     val exposureNudge: Int = 0,
+    val meanLuma: Double = 0.0,
+    val clippedBrightRatio: Double = 0.0,
 )
 
 /** Cheap on-device gate that avoids sending unusable sun-blinded frames. */
@@ -55,10 +57,22 @@ object FrameQualityGate {
             val darkRatio = dark.toDouble() / count
             val edgeScore = edges / count
             return when {
-                brightRatio > 0.42 || mean > 218 -> FrameQuality(false, "Камеру слепит солнце — продолжаю по ИНС", -1)
-                darkRatio > 0.58 || mean < 28 -> FrameQuality(false, "Кадр слишком тёмный — продолжаю по ИНС", 1)
-                deviation < 16 || edgeScore < 2.2 -> FrameQuality(false, "Кадр размыт или без деталей — продолжаю по ИНС")
-                else -> FrameQuality(true, "Кадр пригоден")
+                brightRatio > 0.42 || mean > 218 -> FrameQuality(
+                    false, "Камеру пересвечивает — уменьшаю экспозицию", -1, mean, brightRatio,
+                )
+                darkRatio > 0.58 || mean < 28 -> FrameQuality(
+                    false, "Кадр слишком тёмный — увеличиваю экспозицию", 1, mean, brightRatio,
+                )
+                deviation < 16 || edgeScore < 2.2 -> FrameQuality(
+                    false, "Кадр размыт или без деталей — держусь маршрута", 0, mean, brightRatio,
+                )
+                mean > 160 || brightRatio > 0.14 -> FrameQuality(
+                    true, "Кадр пригоден · уменьшаю экспозицию", -1, mean, brightRatio,
+                )
+                mean < 58 && darkRatio > 0.20 -> FrameQuality(
+                    true, "Кадр пригоден · увеличиваю экспозицию", 1, mean, brightRatio,
+                )
+                else -> FrameQuality(true, "Кадр пригоден", 0, mean, brightRatio)
             }
         } finally {
             bitmap.recycle()

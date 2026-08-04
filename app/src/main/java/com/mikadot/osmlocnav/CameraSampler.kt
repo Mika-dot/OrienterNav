@@ -37,6 +37,7 @@ class CameraSampler(
                     .build()
                 provider?.unbindAll()
                 camera = provider?.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture)
+                setInitialRoadExposure()
             }.onSuccess { onReady(true, null) }.onFailure { onReady(false, it.message) }
         }, ContextCompat.getMainExecutor(context))
     }
@@ -67,6 +68,15 @@ class CameraSampler(
         val range = info.exposureCompensationRange
         val target = (current + direction.coerceIn(-1, 1)).coerceIn(range.lower, range.upper)
         if (target != current) camera?.cameraControl?.setExposureCompensationIndex(target)
+    }
+
+    /** Phones often expose a dark windscreen scene as if it were a portrait. */
+    private fun setInitialRoadExposure() {
+        val info = camera?.cameraInfo?.exposureState ?: return
+        if (!info.isExposureCompensationSupported) return
+        val range = info.exposureCompensationRange
+        val target = (-2).coerceIn(range.lower, range.upper)
+        camera?.cameraControl?.setExposureCompensationIndex(target)
     }
 
     fun close() { provider?.unbindAll(); executor.shutdown() }

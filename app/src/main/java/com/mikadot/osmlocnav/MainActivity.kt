@@ -41,6 +41,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private lateinit var fusedLocation: FusedLocationProviderClient
     private lateinit var ins: InertialNavigator
     private lateinit var cameraSampler: CameraSampler
+    private val visualMotionTracker = VisualMotionTracker()
     private var map: MapLibreMap? = null
     private var startPoint: GeoPoint? = null
     private var destination: GeoPoint? = null
@@ -65,6 +66,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
     private var spoofCounter = 0
     private var lastServerStatus = "камера не настроена"
     private var lastMapFollowMs = 0L
+    private var mapBearing = Double.NaN
     private var rerouteBusy = false
     private val requestBusy = AtomicBoolean(false)
     private val handler = Handler(Looper.getMainLooper())
@@ -306,6 +308,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         drawRoute(result.points)
         ins.setRoute(result.points, start, preservePose = false)
         ins.start()
+        visualMotionTracker.reset()
+        mapBearing = Double.NaN
         navigating = true
         routeMonitor.reset(System.currentTimeMillis())
         binding.searchPanel.visibility = View.GONE
@@ -324,6 +328,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         navigating = false
         rerouteBusy = false
         ins.stop()
+        visualMotionTracker.reset()
         binding.searchPanel.visibility = View.VISIBLE
         binding.navigationPanel.visibility = View.GONE
         binding.gpsButton.visibility = View.VISIBLE
@@ -360,9 +365,14 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         val now = System.currentTimeMillis()
         if (now - lastMapFollowMs > 650) {
             lastMapFollowMs = now
+            val desiredBearing = if (snapshot.roadLocked) snapshot.routeBearingDeg else snapshot.headingDeg
+            mapBearing = if (mapBearing.isNaN()) desiredBearing else {
+                val delta = Geo.signedAngleDifference(desiredBearing, mapBearing).coerceIn(-8.0, 8.0)
+                Geo.normalizeBearing(mapBearing + delta)
+            }
             activeMap.animateCamera(
                 org.maplibre.android.camera.CameraUpdateFactory.newCameraPosition(
-                    CameraPosition.Builder().target(latLng).zoom(17.2).bearing(snapshot.headingDeg).tilt(42.0).build(),
+                    CameraPosition.Builder().target(latLng).zoom(17.2).bearing(mapBearing).tilt(42.0).build(),
                 ),
                 550,
             )
@@ -402,7 +412,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             sourceText,
             snapshot.accuracyMeters,
             snapshot.speedMps * 3.6,
-            lastServerStatus,
+            if (snapshot.roadLocked) "$lastServerStatus · держусь дороги" else lastServerStatus,
         )
     }
 
@@ -411,7 +421,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
         rerouteBusy = true
         binding.maneuverText.text = "Перестраиваю маршрут…"
         setStatus("Вы изменили маршрут", "Строю новый путь от текущего положения")
-        RouteClient(BuildConfig.ROUTER_URL).route(snapshot.position, finish, snapshot.headingDeg) { result ->
+        RouteClient(BuildConfig.ROUTER_URL).route(snapshot.rawPosition, finish, snapshot.headingDeg) { result ->
             runOnUiThread {
                 rerouteBusy = false
                 result.onFailure {
@@ -426,7 +436,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
                     currentStepIndex = 0
                     spokenStepIndex = -1
                     drawRoute(updated.points)
-                    ins.setRoute(updated.points, snapshot.position, preservePose = true)
+                    ins.setRoute(updated.points, snapshot.rawPosition, preservePose = true)
                     routeMonitor.reset(System.currentTimeMillis())
                     binding.routeSummary.text = "${formatDistance(updated.distanceMeters)} · ${formatDuration(updated.durationSeconds)}"
                     setStatus("Маршрут перестроен", "Продолжайте движение")
@@ -481,11 +491,14 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, TextToSpeech.OnIni
             }
             frameResult.onSuccess { bytes ->
                 val quality = FrameQualityGate.assess(bytes)
+                if (quality.exposureNudge != 0) cameraSampler.nudgeExposure(quality.exposureNudge)
                 if (!quality.acceptable) {
-                    cameraSampler.nudgeExposure(quality.exposureNudge)
                     requestBusy.set(false)
                     runOnUiThread { lastServerStatus = quality.message }
                     return@onSuccess
+                }
+                visualMotionTracker.observe(bytes)?.let { motion ->
+                    ins.observeVisualMotion(motion.moving, motion.yawDeltaDegrees, motion.confidence)
                 }
                 val preferences = getSharedPreferences("settings", MODE_PRIVATE)
                 val url = preferences.getString("server_url", "").orEmpty()
