@@ -111,13 +111,18 @@ class Engine:
                 image, camera, canvas, gravity=gravity
             )
             latlon = bundle.projection.unproject(canvas.to_xy(uv))
-            sigma = self._spatial_sigma(probability, uv, self._demo.config.model.pixel_per_meter)
-            confidence = float(np.clip(math.exp(-sigma / 25.0), 0.0, 1.0))
+            sigma, confidence = self._posterior_quality(
+                probability=probability,
+                uv=uv,
+                ppm=self._demo.config.model.pixel_per_meter,
+                yaw_degrees=float(yaw),
+                prior_heading_deg=prior_heading_deg,
+            )
         return LocalizationResponse(
             latitude=float(latlon[0]),
             longitude=float(latlon[1]),
             yaw_degrees=float(yaw),
-            confidence=confidence,
+            confidence=float(confidence),
             sigma_meters=float(sigma),
             inference_ms=int((time.perf_counter() - started) * 1000),
             rotations=NUM_ROTATIONS,
@@ -155,7 +160,20 @@ class Engine:
         return bundle
 
     @staticmethod
-    def _spatial_sigma(probability, uv, ppm: float) -> float:
+    def _posterior_quality(
+        probability,
+        uv,
+        ppm: float,
+        yaw_degrees: float,
+        prior_heading_deg: Optional[float],
+    ) -> tuple[float, float]:
+        """Estimate uncertainty from the full posterior, not only its peak location.
+
+        A broad or multimodal posterior should not be accepted merely because argmax
+        exists. Spatial RMS measures spread, normalized entropy measures ambiguity,
+        and an independent heading prior softly downweights geometrically implausible
+        solutions without forcing the neural result to follow the prior.
+        """
         import torch
 
         pxy = probability.sum(-1).double()
@@ -170,14 +188,28 @@ class Engine:
         du2 = (xx - float(uv[0])) ** 2
         dv2 = (yy - float(uv[1])) ** 2
         rms_pixels = torch.sqrt(((du2 + dv2) * pxy.cpu()).sum()).item()
-        return max(1.0, min(200.0, rms_pixels / float(ppm)))
+        sigma = max(1.0, min(250.0, rms_pixels / float(ppm)))
+
+        flat = pxy.flatten().cpu().clamp_min(1e-15)
+        entropy = float(-(flat * flat.log()).sum().item())
+        max_entropy = math.log(max(2, flat.numel()))
+        concentration = float(np.clip(1.0 - entropy / max_entropy, 0.0, 1.0))
+
+        spatial_score = math.exp(-sigma / 30.0)
+        heading_score = 1.0
+        if prior_heading_deg is not None:
+            delta = abs((yaw_degrees - prior_heading_deg + 180.0) % 360.0 - 180.0)
+            heading_score = math.exp(-0.5 * (delta / 65.0) ** 2)
+
+        confidence = spatial_score * (0.45 + 0.55 * concentration) * (0.55 + 0.45 * heading_score)
+        return sigma, float(np.clip(confidence, 0.0, 1.0))
 
 
 engine = Engine()
 app = FastAPI(
     title="OrienterNav Visual Localization",
-    version="0.1.0",
-    description="Thin authenticated API around Meta OrienterNet (CC-BY-NC).",
+    version="0.2.0",
+    description="Authenticated API around Meta OrienterNet with posterior quality gating.",
 )
 
 
