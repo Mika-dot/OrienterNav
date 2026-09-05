@@ -1,78 +1,144 @@
 # OrienterNav
 
-Android car navigator on OpenStreetMap with optional OrienterNet visual
-localization for checking GPS failures and spoofing. The ordinary navigator is
-usable after compiling the APK; visual correction additionally requires the
-included GPU service.
+OrienterNav is an Android car navigator designed to keep a usable position estimate when GNSS is degraded, jammed, absent or spoofed. GNSS is treated as one optional observation rather than the navigation state itself.
 
-## Implemented
+The v0.2 pipeline combines:
 
-- MapLibre map with free OpenFreeMap OSM tiles, no API key;
-- GPS start, manually entered start, address search, and destination by map tap;
-- driving route, route polyline, distance/time, Russian turn instructions and
-  text-to-speech;
-- forward CameraX capture with adaptive frequency;
-- authenticated OrienterNet API, OSM raster cache, lazy model loading and a
-  Docker GPU configuration;
-- GPS/vision integrity state machine: trusted, suspected, confirmed spoof,
-  visual-only and degraded;
-- route-based visual prior that does not follow suspicious GPS blindly;
-- unit tests for fusion logic and API contract; GitHub Actions builds the APK.
+- OpenStreetMap route geometry;
+- heading-aware route map matching;
+- smartphone IMU short-horizon dead reckoning;
+- forward-camera visual localization through OrienterNet;
+- uncertainty-aware multi-source fusion;
+- GNSS integrity checks instead of blind trust in Android location fixes.
+
+> This is an experimental navigation/integrity project, not a certified automotive positioning system. Consumer phone IMUs drift and visual localization can fail. The software therefore exposes uncertainty and deliberately refuses to invent an absolute coordinate when no trustworthy anchor exists.
+
+## What changed in v0.2
+
+### GNSS is no longer the state
+
+`FusionEngine` maintains an independent motion state. A trustworthy GNSS fix may calibrate it, but a visual fix can also become the absolute anchor. Once anchored, IMU motion propagates the car between absolute fixes. When GNSS disagrees with that independent trajectory it becomes **suspected**, but IMU alone is not allowed to confirm spoofing. A stable visual cluster is still required before GNSS is fully rejected.
+
+### Route map matching
+
+The old navigator used the nearest route vertex and straight-line distance to maneuver points. That behaves badly on curved roads, interchanges and parallel carriageways.
+
+v0.2 adds `RouteMatcher` and `RouteNavigator`:
+
+- projection onto route **segments**, not vertices;
+- continuous progress in metres along the route polyline;
+- heading penalty to separate parallel/opposite roads;
+- monotonic-progress hysteresis to prevent jumping backwards;
+- cross-track error and off-route warning;
+- turn distance measured **along the route**, not through buildings/blocks;
+- route constraints applied to inertial propagation only while heading and geometry remain plausible.
+
+### Smartphone IMU dead reckoning
+
+`VehicleMotionTracker` uses Android rotation-vector and linear-acceleration sensors. A trusted course calibrates the phone-to-vehicle heading offset. The tracker emits incremental distance, velocity, heading and an uncertainty that grows with time and distance since the last correction.
+
+The design is intentionally conservative: IMU propagation is for seconds/tens of seconds between visual/absolute fixes, not indefinite standalone INS.
+
+### Better visual confidence
+
+The OrienterNet service previously converted only spatial RMS into confidence and accepted the model argmax even when the posterior was broad or ambiguous. v0.2 additionally evaluates posterior entropy and softly checks yaw against an independent heading prior. Broad/multimodal fixes are down-weighted before reaching the Android fusion logic.
+
+### Faster recovery
+
+Visual localization is requested more frequently when the system is in `GPS_SUSPECTED`, `SPOOF_CONFIRMED`, `VISUAL_ONLY` or degraded mode. When the solution is healthy the rate is reduced to avoid unnecessary GPU load.
+
+## Runtime architecture
+
+```mermaid
+flowchart LR
+    GNSS[GNSS / Android location\noptional] --> F[FusionEngine]
+    IMU[Rotation vector +\nlinear acceleration] --> DR[VehicleMotionTracker]
+    DR --> F
+    CAM[Forward camera] --> V[OrienterNet service]
+    OSM[OSM semantic raster] --> V
+    V -->|position + yaw +\nconfidence + sigma| F
+    ROUTE[OSRM route geometry] --> MM[RouteMatcher]
+    MM --> F
+    F --> NAV[RouteNavigator]
+    NAV --> UI[Map + along-route\nturn instructions]
+```
+
+More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/GNSS_DENIED.md](docs/GNSS_DENIED.md).
+
+## Positioning modes
+
+| Situation | Output |
+|---|---|
+| GNSS healthy, no visual check yet | GNSS with reported uncertainty |
+| GNSS + vision agree | uncertainty-weighted fused position, optionally route-snapped |
+| GNSS disagrees with IMU | `GPS_SUSPECTED`; GNSS is not rejected yet |
+| repeated vision disagrees with GNSS | `SPOOF_CONFIRMED`; use visual/inertial state |
+| GNSS unavailable, recent visual anchor exists | visual + IMU + optional route constraint |
+| no GNSS, no visual/manual absolute anchor | no fabricated absolute position; state remains waiting/degraded |
+
+## GPS-free operation
+
+GNSS is not required after a trustworthy absolute anchor exists. There are three practical starts:
+
+1. enter the departure point/address manually and build the route;
+2. use an earlier trusted GNSS fix only as the initial anchor, then continue without it;
+3. use visual localization around a known/manual prior.
+
+A phone camera cannot infer an arbitrary city from one road image with the current local OrienterNet backend. Its search is prior-conditioned. A completely cold start with no GNSS, no manually supplied area and no global visual database is therefore intentionally unsupported rather than guessed.
+
+## Implemented navigator features
+
+- MapLibre map with OpenFreeMap OSM style, no Google Maps API key;
+- Nominatim address search;
+- destination by map tap;
+- OSRM driving route and full polyline;
+- Russian turn instructions and TTS;
+- route-progress tracking and cross-track error;
+- CameraX forward capture with adaptive rate;
+- authenticated OrienterNet API and OSM raster cache;
+- lazy GPU model loading and Docker deployment;
+- GNSS/vision/IMU integrity state machine;
+- unit tests for fusion, spoof handling and map matching;
+- GitHub Actions APK build and service contract tests.
 
 ## Build the APK on Windows
 
-### Easiest: GitHub Actions
+### GitHub Actions
 
-1. Open the repository's **Actions** tab and select the latest **CI** run for
-   `main`.
-2. Wait until both jobs are green.
-3. In the run page's **Artifacts** section, download
-   `OrienterNav-debug-apk` and unpack the ZIP.
-4. Copy `app-debug.apk` to the phone, allow installation from the browser or
-   file manager when Android asks, and open the APK.
+1. Open **Actions** in this repository.
+2. Select the latest successful **CI** run.
+3. Download artifact `OrienterNav-debug-apk`.
+4. Unpack it and install `app-debug.apk` on Android 8.0+.
 
-If Actions are disabled for the private repository, enable them in
-**Settings → Actions → General**, then run the **CI** workflow again.
+### Local build
 
-### Build locally
+Install Android Studio with Android SDK 35 and JDK 17, then:
 
-1. Install Android Studio with Android SDK 35 and JDK 17.
-2. Clone/download this repository, open its root as a project, and wait for
-   Gradle sync.
-3. Open the terminal in the project root and run
-   `gradlew.bat testDebugUnitTest assembleDebug`.
-4. Install `app\build\outputs\apk\debug\app-debug.apk` on Android 8.0+.
+```bat
+gradlew.bat testDebugUnitTest assembleDebug
+```
 
-No Google Maps key is required. The default routing endpoint is the public OSRM
-demo, appropriate for personal/testing use. All endpoints can be replaced in
-the in-app **Настройки** dialog. For reliable offline or continuous use,
-self-host OSRM/Nominatim and point the app to them.
+APK output:
+
+```text
+app\build\outputs\apk\debug\app-debug.apk
+```
 
 ## Start visual localization
 
-The original OrienterNet evaluation requires roughly 11 GB of GPU memory at its
-documented settings. It is a Python/PyTorch research model, so the repository
-runs it beside the phone instead of pretending that it is a practical in-APK
-model.
-
-On a Linux machine with an NVIDIA GPU, Docker and NVIDIA Container Toolkit:
+The original OrienterNet evaluation is a PyTorch/GPU workload and is not embedded into the APK. Run the included service on a Linux/NVIDIA host:
 
 ```bash
 cd orienternet-service
 cp .env.example .env
-# change the key in .env
+# change ORIENTERNET_API_KEY in .env
 docker compose up --build -d
 curl -H "X-API-Key: YOUR_KEY" -X POST http://127.0.0.1:8000/v1/warmup
 ```
 
-Expose port 8000 through an HTTPS reverse proxy or a personal HTTPS tunnel
-(for example, Tailscale Serve), then enter its `https://...` address and the
-same API key in the application. Android intentionally blocks generic cleartext
-LAN HTTP because it would expose both the API key and camera frames. HTTP is
-allowed only for emulator development through `localhost`/`10.0.2.2`. Mount the
-phone so the rear camera faces forward with a clear, stable view.
+Expose it through HTTPS (for example through a private reverse proxy/tunnel), then enter the URL and API key in the app settings. Android blocks generic clear-text LAN transport because camera frames and the key should not be sent unencrypted.
 
-For API-only testing without a GPU:
+API-only mock test:
 
 ```bash
 cd orienternet-service
@@ -83,18 +149,30 @@ ORIENTERNET_MOCK=1 ORIENTERNET_API_KEY=test uvicorn app.main:app --port 8000
 pytest -q
 ```
 
-Mock mode verifies transport and UI integration only; it does not perform
-visual localization.
+## Recommended hardware / next accuracy step
 
-## Accuracy and limitations
+The current phone-only stack is deliberately deployable without modifying the vehicle. For substantially better long-duration GNSS-denied accuracy, the next source should be **wheel speed / odometry** from OBD-II/CAN (read-only), not more aggressive accelerometer integration. Wheel distance plus phone gyro plus visual/map corrections is much more observable than integrating consumer accelerometer bias for minutes.
 
-Visual localization is used only when its posterior is sharp and several frames
-agree. This greatly reduces jumps, but it is not a guarantee. OrienterNet is
-local: it needs an approximate search prior. A kilometer-scale spoof already
-active before the app has a trusted/manual origin cannot be solved from a
-single frame. See [architecture and trust model](docs/ARCHITECTURE.md) and the
-[API contract](docs/API.md).
+Other high-value extensions are documented in [docs/GNSS_DENIED.md](docs/GNSS_DENIED.md): lane/road-edge visual constraints, barometer/elevation matching, Wi-Fi/cellular signals of opportunity, local visual place recognition, HMM/particle-filter road hypotheses and offline routing/maps.
 
-OrienterNet code and pretrained weights are CC BY-NC and therefore suitable for
-this personal/non-commercial project, not a commercial product without separate
-permission. See [third-party notices](THIRD_PARTY_NOTICES.md).
+## Network/offline note
+
+The positioning logic can operate without GNSS, but the default map/search/router endpoints are online public services. For operation with no external connectivity, self-host or package equivalents for:
+
+- map tiles/style;
+- OSRM routing graph;
+- Nominatim/geocoding;
+- OrienterNet raster/map data.
+
+The public OSRM/Nominatim endpoints are suitable for testing, not production traffic.
+
+## Limitations
+
+- consumer IMU bias causes dead-reckoning drift;
+- phone mounting orientation must remain stable after calibration;
+- magnetic/rotation-vector heading may degrade inside some vehicles;
+- visual localization may fail at night, in snow/rain, on featureless/repetitive roads or with stale OSM data;
+- route snapping is disabled when cross-track/heading consistency is poor, so an incorrect route is not allowed to silently drag the car onto the wrong road;
+- this project detects coordinate inconsistency; it is not an RF jammer detector and cannot identify every sophisticated spoofing attack.
+
+OrienterNet code/pretrained weights have their own non-commercial licensing constraints. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
