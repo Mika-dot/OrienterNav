@@ -2,6 +2,7 @@ package com.mikadot.orienternav.location
 
 import com.mikadot.orienternav.model.GeoPoint
 import com.mikadot.orienternav.model.GpsSample
+import com.mikadot.orienternav.model.MotionSample
 import com.mikadot.orienternav.model.TrustState
 import com.mikadot.orienternav.model.VisualEstimate
 import org.junit.Assert.assertEquals
@@ -49,5 +50,45 @@ class FusionEngineTest {
         val result = engine.addVisual(VisualEstimate(base, 42.0, .8, 10.0, 1_000))
         assertEquals(TrustState.VISUAL_ONLY, result.state)
         assertEquals(42.0, result.headingDegrees!!, .01)
+    }
+
+    @Test
+    fun `motion propagates visual anchor with no gps`() {
+        val engine = FusionEngine()
+        engine.setRoute(listOf(base, base.offset(0.0, 500.0)))
+        engine.addVisual(VisualEstimate(base, 0.0, .9, 5.0, 1_000))
+        val result =
+            engine.addMotion(
+                MotionSample(
+                    distanceMeters = 25.0,
+                    speedMps = 10.0,
+                    headingDegrees = 0.0,
+                    sigmaMeters = 6.0,
+                    timestampMillis = 2_000,
+                ),
+            )
+        assertEquals(TrustState.VISUAL_ONLY, result.state)
+        assertTrue(result.point.distanceTo(base) in 20.0..30.0)
+        assertTrue(result.explanation.contains("IMU"))
+    }
+
+    @Test
+    fun `imu disagreement marks gps suspicious but does not confirm spoof alone`() {
+        val engine = FusionEngine()
+        engine.addGps(GpsSample(base, 5.0, 10.0, 0.0, 1_000))
+        engine.addMotion(MotionSample(20.0, 10.0, 0.0, 5.0, 2_000))
+        repeat(3) { index ->
+            engine.addGps(
+                GpsSample(
+                    base.offset(250.0 + index, 0.0),
+                    5.0,
+                    10.0,
+                    90.0,
+                    2_100L + index * 100L,
+                ),
+            )
+        }
+        val result = engine.current(2_500)
+        assertEquals(TrustState.GPS_SUSPECTED, result.state)
     }
 }
