@@ -16,8 +16,8 @@ import kotlin.math.sin
  *
  * It intentionally does not claim long-term INS accuracy. The tracker is useful
  * between visual fixes and through short GNSS outages: a trusted course/speed
- * calibrates the phone-to-vehicle heading offset, then gyro/rotation-vector
- * heading and linear acceleration propagate motion while uncertainty grows.
+ * calibrates the phone-to-vehicle heading offset, then rotation-vector heading
+ * and linear acceleration propagate motion while uncertainty grows.
  */
 class VehicleMotionTracker(
     context: Context,
@@ -86,10 +86,14 @@ class VehicleMotionTracker(
         lastCalibratedMillis = timestampMillis
     }
 
+    fun correctHeading(courseDegrees: Double) {
+        correctHeading(courseDegrees, System.currentTimeMillis())
+    }
+
     /** A visual yaw correction is independent of GNSS and is particularly valuable under spoofing. */
     fun correctHeading(
         courseDegrees: Double,
-        timestampMillis: Long = System.currentTimeMillis(),
+        timestampMillis: Long,
     ) {
         val azimuth = sensorAzimuthDeg ?: return
         headingOffsetDeg = normalizeDegrees(courseDegrees - azimuth)
@@ -99,10 +103,7 @@ class VehicleMotionTracker(
 
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {
-            Sensor.TYPE_GAME_ROTATION_VECTOR,
-            Sensor.TYPE_ROTATION_VECTOR,
-            -> updateOrientation(event)
-
+            Sensor.TYPE_GAME_ROTATION_VECTOR, Sensor.TYPE_ROTATION_VECTOR -> updateOrientation(event)
             Sensor.TYPE_LINEAR_ACCELERATION -> updateAcceleration(event)
         }
     }
@@ -139,7 +140,6 @@ class VehicleMotionTracker(
         forwardAcceleration = forwardAcceleration.coerceIn(-7.0, 5.0)
 
         speedMps = (speedMps + forwardAcceleration * dt).coerceIn(0.0, 55.0)
-        // Tiny acceleration around standstill is mostly sensor noise.
         if (speedMps < 0.8 && abs(forwardAcceleration) < 0.12) speedMps *= exp(-5.0 * dt)
 
         distanceSinceEmit += speedMps * dt
