@@ -29,6 +29,8 @@ import com.mikadot.orienternav.R
 import com.mikadot.orienternav.camera.VisualFrameSampler
 import com.mikadot.orienternav.databinding.ActivityMainBinding
 import com.mikadot.orienternav.location.FusionEngine
+import com.mikadot.orienternav.location.RouteNavigator
+import com.mikadot.orienternav.location.VehicleMotionTracker
 import com.mikadot.orienternav.model.FusedPosition
 import com.mikadot.orienternav.model.GeoPoint
 import com.mikadot.orienternav.model.GpsSample
@@ -68,6 +70,7 @@ class MainActivity :
     private lateinit var binding: ActivityMainBinding
     private lateinit var settings: SettingsStore
     private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var motionTracker: VehicleMotionTracker
     private val fusion = FusionEngine()
     private val handler = Handler(Looper.getMainLooper())
     private val http by lazy { NominatimClient.defaultHttp() }
@@ -79,6 +82,7 @@ class MainActivity :
     private var manualStart: GeoPoint? = null
     private var destination: GeoPoint? = null
     private var route: RoutePlan? = null
+    private var routeNavigator: RouteNavigator? = null
     private var routeStartPoint: GeoPoint? = null
     private var choosingDestination = false
     private var navigating = false
@@ -89,6 +93,7 @@ class MainActivity :
     private var lastTrustedPoint: GeoPoint? = null
     private var lastTrustedAt: Long = 0L
     private var lastTrustedSpeed = 0.0
+    private var lastMotionSpeed = 0.0
 
     private val permissions =
         registerForActivityResult(
@@ -113,6 +118,15 @@ class MainActivity :
         setContentView(binding.root)
         settings = SettingsStore(this)
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        motionTracker =
+            VehicleMotionTracker(this) { sample ->
+                lastMotionSpeed = sample.speedMps
+                if (navigating) {
+                    runOnUiThread {
+                        if (navigating) updateFused(fusion.addMotion(sample))
+                    }
+                }
+            }
         tts = TextToSpeech(this, this)
         binding.mapView.onCreate(savedInstanceState)
         binding.mapView.getMapAsync { mapLibre ->
@@ -185,8 +199,12 @@ class MainActivity :
                 System.currentTimeMillis(),
             )
         currentGps = sample
-        updateFused(fusion.addGps(sample))
-        if (map?.cameraPosition?.zoom ?: 0.0 < 5.0) centerMap(sample.point, 16.0)
+        val result = fusion.addGps(sample)
+        if (result.state == TrustState.GPS_TRUSTED) {
+            motionTracker.calibrate(sample.speedMps, sample.bearingDegrees, sample.timestampMillis)
+        }
+        updateFused(result)
+        if (map?.cameraPosition?.zoom ?: 0.0 < 5.0) centerMap(result.point, 16.0)
     }
 
     private fun updateFused(position: FusedPosition) {
@@ -195,7 +213,13 @@ class MainActivity :
         if (position.state == TrustState.GPS_TRUSTED && (!visionConfigured || position.gpsVisualDeltaMeters != null)) {
             lastTrustedPoint = position.point
             lastTrustedAt = System.currentTimeMillis()
-            lastTrustedSpeed = currentGps?.speedMps?.coerceIn(0.0, 45.0) ?: lastTrustedSpeed
+            lastTrustedSpeed = currentGps?.speedMps?.coerceIn(0.0, 45.0) ?: lastMotionSpeed
+        }
+        if (position.state in setOf(TrustState.VISUAL_ONLY, TrustState.SPOOF_CONFIRMED) && position.headingDegrees != null) {
+            motionTracker.correctHeading(position.headingDegrees)
+            lastTrustedPoint = position.point
+            lastTrustedAt = System.currentTimeMillis()
+            if (lastMotionSpeed > 0.2) lastTrustedSpeed = lastMotionSpeed
         }
         val color =
             when (position.state) {
@@ -206,16 +230,13 @@ class MainActivity :
                 TrustState.WAITING -> R.color.nav_warn
             }
         binding.localizationStatus.setTextColor(ContextCompat.getColor(this, color))
-        binding.localizationStatus.text = "Позиция: ${position.explanation}"
+        binding.localizationStatus.text = "Позиция: ${position.explanation} • ±${position.accuracyMeters.toInt()} м"
         renderPosition(position)
-        if (navigating) updateNavigationInstruction(position.point)
+        if (navigating) updateNavigationInstruction(position)
     }
 
     private fun searchDestination() {
-        val query =
-            binding.destinationInput.text
-                .toString()
-                .trim()
+        val query = binding.destinationInput.text.toString().trim()
         if (query.isBlank()) return toast("Введите адрес назначения")
         binding.navigationInstruction.text = "Поиск адреса…"
         lifecycleScope.launch {
@@ -247,10 +268,7 @@ class MainActivity :
             binding.navigationInstruction.text = "Построение маршрута…"
             runCatching { OsrmClient(http, settings.routerUrl).route(start, finish) }
                 .onSuccess { plan ->
-                    route = plan
-                    routeStartPoint = start
-                    currentStepIndex = 0
-                    spokenStepIndex = -1
+                    installRoute(plan, start)
                     binding.routeSummary.text = "${formatDistance(plan.distanceMeters)} • ${formatDuration(plan.durationSeconds)}"
                     binding.navigationInstruction.text = plan.steps.firstOrNull()?.instruction ?: "Маршрут построен"
                     binding.navigationButton.isEnabled = true
@@ -260,17 +278,26 @@ class MainActivity :
         }
     }
 
+    private fun installRoute(
+        plan: RoutePlan,
+        start: GeoPoint,
+    ) {
+        route = plan
+        routeStartPoint = start
+        routeNavigator = RouteNavigator(plan).also { it.update(start) }
+        fusion.setRoute(plan.geometry)
+        currentStepIndex = 0
+        spokenStepIndex = -1
+    }
+
     private suspend fun resolveStartPoint(): GeoPoint? {
         manualStart?.let { return it }
-        val text =
-            binding.sourceInput.text
-                .toString()
-                .trim()
+        val text = binding.sourceInput.text.toString().trim()
         if (text.isBlank() || text.contains("GPS", true)) {
             return fused?.takeIf { it.state != TrustState.WAITING }?.point
                 ?: currentGps?.point
                 ?: run {
-                    toast("GPS ещё не определил позицию")
+                    toast("Нет текущей позиции. Введите старт вручную — GPS не обязателен")
                     null
                 }
         }
@@ -288,15 +315,10 @@ class MainActivity :
 
     private suspend fun resolveDestination(): GeoPoint? {
         destination?.let { return it }
-        val text =
-            binding.destinationInput.text
-                .toString()
-                .trim()
+        val text = binding.destinationInput.text.toString().trim()
         if (text.isBlank()) {
-            return run {
-                toast("Укажите точку назначения")
-                null
-            }
+            toast("Укажите точку назначения")
+            return null
         }
         return runCatching { NominatimClient(http, settings.geocoderUrl).search(text).firstOrNull() }
             .onFailure { showError(it) }
@@ -315,8 +337,18 @@ class MainActivity :
         lastTrustedPoint = routeStartPoint ?: fused?.point
         lastTrustedAt = System.currentTimeMillis()
         lastTrustedSpeed = currentGps?.speedMps?.coerceIn(0.0, 45.0) ?: 0.0
+        lastMotionSpeed = lastTrustedSpeed
         binding.navigationButton.text = getString(R.string.stop_navigation)
         binding.searchPanel.visibility = View.GONE
+        motionTracker.start()
+
+        val trusted = fused
+        if (trusted?.state == TrustState.GPS_TRUSTED) {
+            motionTracker.calibrate(currentGps?.speedMps, trusted.headingDegrees)
+        } else {
+            routeNavigator?.currentRouteHeading()?.let(motionTracker::correctHeading)
+        }
+
         if (settings.visualEnabled && settings.visualServiceUrl.isNotBlank()) {
             if (hasPermission(Manifest.permission.CAMERA)) {
                 startCamera()
@@ -324,15 +356,16 @@ class MainActivity :
                 permissions.launch(arrayOf(Manifest.permission.CAMERA))
             }
         } else {
-            binding.localizationStatus.text = "Позиция: GPS; визуальный сервис не настроен"
+            binding.localizationStatus.text = "Позиция: IMU/маршрут активны; визуальный сервис не настроен"
         }
-        scheduleVisualCapture(1_000)
+        scheduleVisualCapture(700)
     }
 
     private fun stopNavigation() {
         navigating = false
         handler.removeCallbacksAndMessages(null)
         frameSampler?.stop()
+        motionTracker.stop()
         binding.cameraPreview.visibility = View.GONE
         binding.searchPanel.visibility = View.VISIBLE
         binding.navigationButton.text = getString(R.string.start_navigation)
@@ -348,8 +381,13 @@ class MainActivity :
         handler.postDelayed({
             if (!navigating || !settings.visualEnabled || settings.visualServiceUrl.isBlank()) return@postDelayed
             captureAndLocalize()
-            val fast = fused?.state in setOf(TrustState.GPS_SUSPECTED, TrustState.SPOOF_CONFIRMED, TrustState.DEGRADED)
-            scheduleVisualCapture(if (fast) 4_000 else 8_000)
+            val fast = fused?.state in setOf(
+                TrustState.GPS_SUSPECTED,
+                TrustState.SPOOF_CONFIRMED,
+                TrustState.VISUAL_ONLY,
+                TrustState.DEGRADED,
+            )
+            scheduleVisualCapture(if (fast) 2_500 else 6_000)
         }, delayMillis)
     }
 
@@ -369,11 +407,14 @@ class MainActivity :
                             OrienterClient(settings.visualServiceUrl, settings.visualApiKey).localize(
                                 jpeg,
                                 prior,
-                                fused?.headingDegrees ?: currentGps?.bearingDegrees,
-                                if (fused?.state == TrustState.GPS_TRUSTED) 96 else 160,
+                                fused?.headingDegrees ?: currentGps?.bearingDegrees ?: routeNavigator?.currentRouteHeading(),
+                                if (fused?.state == TrustState.GPS_TRUSTED) 96 else 192,
                             )
                         }.onSuccess { estimate ->
-                            if (navigating) updateFused(fusion.addVisual(estimate))
+                            if (navigating) {
+                                motionTracker.correctHeading(estimate.yawDegrees, estimate.timestampMillis)
+                                updateFused(fusion.addVisual(estimate))
+                            }
                         }.onFailure { binding.localizationStatus.text = "Камера: ${it.message}" }
                         localizationInFlight.set(false)
                     }
@@ -386,10 +427,14 @@ class MainActivity :
 
     private fun visualPrior(): GeoPoint? {
         val position = fused
-        if (position?.state == TrustState.GPS_TRUSTED && position.gpsVisualDeltaMeters != null) return position.point
-        val trusted = lastTrustedPoint ?: manualStart ?: currentGps?.point ?: return null
+        if (position != null && position.state != TrustState.WAITING && position.accuracyMeters <= 90.0) {
+            return position.point
+        }
+        val trusted = lastTrustedPoint ?: manualStart ?: currentGps?.point ?: routeStartPoint ?: return null
         val elapsed = max(0L, System.currentTimeMillis() - lastTrustedAt) / 1000.0
-        return advanceAlongRoute(trusted, (elapsed * lastTrustedSpeed).coerceAtMost(350.0))
+        val speed = max(lastMotionSpeed, lastTrustedSpeed).coerceIn(0.0, 45.0)
+        val distance = (elapsed * speed).coerceAtMost(500.0)
+        return routeNavigator?.predictedPoint(distance) ?: advanceAlongRoute(trusted, distance)
     }
 
     private fun advanceAlongRoute(
@@ -418,28 +463,42 @@ class MainActivity :
         return geometry.last()
     }
 
-    private fun updateNavigationInstruction(point: GeoPoint) {
-        val steps = route?.steps ?: return
-        if (currentStepIndex >= steps.size) return
-        var step = steps[currentStepIndex]
-        var distance = point.distanceTo(step.point)
-        if (distance < 28.0 && currentStepIndex < steps.lastIndex) {
-            currentStepIndex++
-            step = steps[currentStepIndex]
-            distance = point.distanceTo(step.point)
-        }
-        binding.navigationInstruction.text = "Через ${formatDistance(distance)}: ${step.instruction}"
-        if (distance < 90.0 && spokenStepIndex != currentStepIndex) {
-            spokenStepIndex = currentStepIndex
-            tts?.speak(step.instruction, TextToSpeech.QUEUE_FLUSH, null, "step-$currentStepIndex")
-        }
-        destination?.let { destinationPoint ->
-            if (point.distanceTo(destinationPoint) < 25.0) {
+    private fun updateNavigationInstruction(position: FusedPosition) {
+        val guidance = routeNavigator?.update(position.point, position.headingDegrees)
+        if (guidance != null) {
+            currentStepIndex = guidance.stepIndex
+            val offRouteLimit = max(45.0, position.accuracyMeters * 1.8)
+            if (guidance.crossTrackMeters > offRouteLimit) {
+                binding.navigationInstruction.text =
+                    "Отклонение от маршрута ~${guidance.crossTrackMeters.toInt()} м — не привязываю позицию к дороге"
+                return
+            }
+            if (guidance.arrived) {
                 binding.navigationInstruction.text = "Вы прибыли"
                 tts?.speak("Вы прибыли", TextToSpeech.QUEUE_FLUSH, null, "arrived")
                 stopNavigation()
+                return
             }
+            binding.navigationInstruction.text =
+                "Через ${formatDistance(guidance.distanceToStepMeters)}: ${guidance.instruction}"
+            if (guidance.distanceToStepMeters < 90.0 && spokenStepIndex != guidance.stepIndex) {
+                spokenStepIndex = guidance.stepIndex
+                tts?.speak(guidance.instruction, TextToSpeech.QUEUE_FLUSH, null, "step-${guidance.stepIndex}")
+            }
+            return
         }
+
+        // Fallback for a malformed/empty route geometry.
+        val steps = route?.steps ?: return
+        if (currentStepIndex >= steps.size) return
+        var step = steps[currentStepIndex]
+        var distance = position.point.distanceTo(step.point)
+        if (distance < 28.0 && currentStepIndex < steps.lastIndex) {
+            currentStepIndex++
+            step = steps[currentStepIndex]
+            distance = position.point.distanceTo(step.point)
+        }
+        binding.navigationInstruction.text = "Через ${formatDistance(distance)}: ${step.instruction}"
     }
 
     private fun loadMapStyle() {
@@ -605,7 +664,8 @@ class MainActivity :
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
-    private fun hasPermission(permission: String) = ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+    private fun hasPermission(permission: String) =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     override fun onStart() {
         super.onStart()
@@ -615,9 +675,11 @@ class MainActivity :
     override fun onResume() {
         super.onResume()
         binding.mapView.onResume()
+        if (navigating) motionTracker.start()
     }
 
     override fun onPause() {
+        motionTracker.stop()
         binding.mapView.onPause()
         super.onPause()
     }
@@ -636,6 +698,7 @@ class MainActivity :
         fusedLocationClient.removeLocationUpdates(locationCallback)
         handler.removeCallbacksAndMessages(null)
         frameSampler?.close()
+        motionTracker.stop()
         tts?.shutdown()
         binding.mapView.onDestroy()
         super.onDestroy()
