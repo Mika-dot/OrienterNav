@@ -73,22 +73,41 @@ class FusionEngineTest {
     }
 
     @Test
-    fun `imu disagreement marks gps suspicious but does not confirm spoof alone`() {
+    fun `explicit route start anchors completely gps free navigation`() {
+        val engine = FusionEngine()
+        val now = System.currentTimeMillis()
+        engine.setRoute(listOf(base, base.offset(0.0, 500.0)))
+        val result =
+            engine.addMotion(
+                MotionSample(
+                    distanceMeters = 12.0,
+                    speedMps = 6.0,
+                    headingDegrees = 0.0,
+                    sigmaMeters = 8.0,
+                    timestampMillis = now + 100,
+                ),
+            )
+        assertEquals(TrustState.DEGRADED, result.state)
+        assertTrue(result.point.distanceTo(base) in 8.0..16.0)
+    }
+
+    @Test
+    fun `first large gps innovation is suppressed pending visual confirmation`() {
         val engine = FusionEngine()
         engine.addGps(GpsSample(base, 5.0, 10.0, 0.0, 1_000))
         engine.addMotion(MotionSample(20.0, 10.0, 0.0, 5.0, 2_000))
-        repeat(3) { index ->
+        val result =
             engine.addGps(
                 GpsSample(
-                    base.offset(250.0 + index, 0.0),
+                    base.offset(250.0, 0.0),
                     5.0,
                     10.0,
                     90.0,
-                    2_100L + index * 100L,
+                    2_100,
                 ),
             )
-        }
-        val result = engine.current(2_500)
         assertEquals(TrustState.GPS_SUSPECTED, result.state)
+        assertTrue(result.point.distanceTo(base.offset(0.0, 20.0)) < 5.0)
+        assertTrue(result.point.distanceTo(base.offset(250.0, 0.0)) > 150.0)
     }
 }
