@@ -58,6 +58,17 @@ class FusionEngine(
         motionRouteProgressMeters = motionPoint?.let { point ->
             routeMatcher?.match(point, motionHeadingDegrees)?.progressMeters
         }
+        // A route created with no GNSS/visual state necessarily came from an explicit
+        // user-supplied start. Treat that route origin as a coarse manual anchor so
+        // the navigator can start in a completely GNSS-free environment.
+        if (gps == null && motionPoint == null && geometry.size >= 2) {
+            anchorMotion(
+                point = geometry.first(),
+                accuracyMeters = 18.0,
+                headingDegrees = geometry[0].bearingTo(geometry[1]),
+                timestampMillis = System.currentTimeMillis(),
+            )
+        }
     }
 
     fun clearRoute() {
@@ -220,15 +231,15 @@ class FusionEngine(
         }
 
         if (visual == null) {
-            if (gpsMotionDisagreementCount >= confirmationCount && motion != null) {
+            if (gpsMotionDisagreementCount > 0 && motion != null) {
                 val delta = currentGps.point.distanceTo(motion.point)
                 return FusedPosition(
-                    currentGps.point,
-                    currentGps.accuracyMeters,
-                    currentGps.bearingDegrees,
+                    motion.point,
+                    motion.accuracyMeters,
+                    motion.headingDegrees ?: currentGps.bearingDegrees,
                     TrustState.GPS_SUSPECTED,
                     delta,
-                    "GPS расходится с независимым IMU прогнозом на ${delta.toInt()} м; ожидается визуальная проверка",
+                    "GPS расходится с независимым IMU прогнозом на ${delta.toInt()} м; GNSS временно не управляет позицией",
                 )
             }
             val poor = currentGps.accuracyMeters > 80.0
@@ -256,13 +267,14 @@ class FusionEngine(
             )
         }
         if (delta > threshold) {
+            val independent = motion?.takeIf { it.accuracyMeters <= max(visual.sigmaMeters * 3.0, 90.0) }
             return FusedPosition(
-                currentGps.point,
-                currentGps.accuracyMeters,
-                currentGps.bearingDegrees ?: motion?.headingDegrees,
+                independent?.point ?: currentGps.point,
+                independent?.accuracyMeters ?: currentGps.accuracyMeters,
+                independent?.headingDegrees ?: currentGps.bearingDegrees,
                 TrustState.GPS_SUSPECTED,
                 delta,
-                "Расхождение GPS/камеры ${delta.toInt()} м; требуется $confirmationCount подтверждения",
+                "Расхождение GPS/камеры ${delta.toInt()} м; требуется $confirmationCount визуальных подтверждения",
             )
         }
 
