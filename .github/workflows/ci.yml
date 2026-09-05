@@ -37,3 +37,5 @@ jobs:
           cache-dependency-path: orienternet-service/requirements.txt
       - run: pip install -r requirements.txt
       - run: pytest -q
+        env:
+          PYTHONPATH: .

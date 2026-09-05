@@ -4,45 +4,79 @@
 
 ```mermaid
 flowchart TD
-    GPS[Android GNSS] --> F[FusionEngine]
+    GNSS[Android GNSS / fused location] --> F[FusionEngine]
+    IMU[Rotation vector + linear acceleration] --> DR[VehicleMotionTracker]
+    DR --> F
     CAM[Forward camera] --> API[OrienterNet service]
     OSM[OSM semantic raster] --> API
     API -->|position, yaw, confidence, sigma| F
-    ROUTE[OSRM route + last trusted progress] --> PRIOR[Visual search prior]
-    PRIOR --> API
-    F --> UI[Map, instructions, warning]
+    ROUTE[OSRM route geometry] --> MM[RouteMatcher]
+    MM --> F
+    F --> RN[RouteNavigator]
+    RN --> UI[Map, turn guidance, integrity warning]
 ```
 
-The normal navigator does not depend on OrienterNet: MapLibre renders OSM data,
-Nominatim resolves user-entered addresses, and OSRM provides a driving route.
-Visual localization is an additional integrity channel.
+GNSS is an observation channel, not the authoritative state. The independent state can be anchored by vision and then propagated by IMU. The route is a soft geometric constraint, never an unconditional snap target.
+
+## Source roles
+
+### GNSS / Android location
+
+Useful when healthy because it supplies absolute position, speed and course cheaply. It is never considered sufficient evidence that it is correct simply because Android reports small `accuracy`.
+
+### Visual localization
+
+Provides an absolute position/yaw estimate against OSM around a prior. It is the independent absolute source used to confirm or reject GNSS disagreement. The server reports confidence and spatial sigma derived from the posterior.
+
+### Phone IMU
+
+Provides continuity between absolute fixes. It is deliberately short-horizon. Bias is not hidden: uncertainty grows with time/distance and the system stops treating the result as precise.
+
+### Route geometry
+
+Provides a road-bearing and cross-track constraint. A propagated point may be projected onto the selected route only when the raw point is close enough and the route heading is compatible with the inertial heading. This prevents a stale/wrong route from silently dragging the estimate across an intersection.
 
 ## Decision rules
 
-- A single visual estimate never replaces GNSS.
-- Estimates below `0.38` confidence or above `45 m` sigma are discarded.
-- Three recent visual estimates must agree within `28 m`.
-- GPS is rejected only when that cluster also disagrees with GNSS beyond a
-  dynamic threshold derived from GPS accuracy and visual uncertainty.
-- When both channels agree, they are uncertainty-weighted; visual influence is
-  capped so an overconfident frame cannot cause a large jump.
-- During a suspected spoof, the visual search center is predicted from the last
-  trusted route position, elapsed time, and the last plausible speed. It is not
-  taken blindly from the suspicious GPS coordinate.
+1. A single visual estimate never proves spoofing.
+2. Low-confidence or very broad visual posteriors are discarded/down-weighted.
+3. Several visual estimates must be mutually consistent in motion and yaw.
+4. GNSS-vs-IMU innovation can mark GNSS as `GPS_SUSPECTED`, but cannot by itself produce `SPOOF_CONFIRMED`.
+5. Repeated consistent vision that disagrees with GNSS beyond the dynamic uncertainty threshold can confirm spoofing.
+6. Once GNSS is rejected, the output comes from the visual anchor propagated by IMU and optionally constrained by route geometry.
+7. When no fresh absolute anchor exists, the system refuses to invent a global coordinate.
 
-## Fundamental limit
+## Route matching
 
-OrienterNet is a local, prior-conditioned localizer, not a planet-wide image
-search engine. The included server searches at most 256 m around a prior. If the
-application starts while GPS is already displaced by kilometers and there is no
-manual start or earlier trusted route state, the system cannot infer the city
-from one image. This is why a manual origin and route-constrained prior are
-first-class inputs.
+`RouteMatcher` works on polyline segments and stores cumulative distance. Candidate score combines:
+
+- cross-track distance;
+- heading disagreement penalty;
+- backwards-progress rejection/hysteresis.
+
+`RouteNavigator` keeps route progress monotonic and measures the distance to the next maneuver along the route polyline. This replaces the old straight-line distance to maneuver coordinates, which was especially wrong on curved roads, ramps and block-shaped city routes.
+
+## Visual prior
+
+OrienterNet is a local prior-conditioned localizer. Under healthy positioning, the current fused point is used as the search prior. During degraded/spoofed operation, the prior follows independent route/IMU progress rather than suspicious GNSS.
+
+Search radius is increased in degraded states and visual capture frequency is also increased until the estimator recovers.
+
+## Fundamental observability limits
+
+No software-only phone solution can provide unlimited high-accuracy inertial navigation. Consumer MEMS acceleration bias integrates into velocity and then position error. A route constraint removes part of the cross-track drift but does not make longitudinal distance observable on a long straight road.
+
+Likewise, a local visual map matcher cannot determine an arbitrary country/city from one image without a global visual database or another coarse prior. For a cold GNSS-free start the user therefore supplies the start/area manually, or the application reuses an earlier trustworthy anchor.
 
 ## Threat model
 
-The system is intended to detect ordinary GNSS loss, gross multipath errors and
-coordinate spoofing. It is not a certified safety or anti-jamming instrument.
-It can fail with stale/incorrect OSM data, featureless roads, darkness, adverse
-weather, blocked camera view, repeated urban geometry, or adversarial signs and
-images. The driver remains responsible for safe operation.
+The project targets:
+
+- complete GNSS loss/jamming;
+- gross coordinate spoofing;
+- multipath and implausible GNSS jumps;
+- short/medium gaps between absolute position corrections.
+
+It does not claim protection against every sophisticated coordinated attack. An attacker capable of simultaneously controlling GNSS, camera imagery/map semantics, route data and device sensors can defeat this architecture. The project is not a certified safety instrument.
+
+See [GNSS_DENIED.md](GNSS_DENIED.md) for the accuracy roadmap and field-test procedure.

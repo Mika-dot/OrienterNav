@@ -16,6 +16,21 @@ data class VisualEstimate(
     val timestampMillis: Long,
 )
 
+/**
+ * Incremental motion estimate produced by the phone IMU.
+ *
+ * distanceMeters is a delta since the previous emitted sample, not an absolute
+ * odometer value. The fusion layer deliberately treats this as a short-term
+ * propagation source: uncertainty grows continuously until vision/GNSS resets it.
+ */
+data class MotionSample(
+    val distanceMeters: Double,
+    val speedMps: Double,
+    val headingDegrees: Double,
+    val sigmaMeters: Double,
+    val timestampMillis: Long,
+)
+
 enum class TrustState {
     WAITING,
     GPS_TRUSTED,
