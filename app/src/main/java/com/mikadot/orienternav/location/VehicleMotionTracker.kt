@@ -32,6 +32,7 @@ class VehicleMotionTracker(
     private var started = false
     private var sensorAzimuthDeg: Double? = null
     private var headingOffsetDeg: Double? = null
+    private var pendingCourseDegrees: Double? = null
     private var speedMps = 0.0
     private var lastAccelerationNs = 0L
     private var lastEmitNs = 0L
@@ -62,6 +63,7 @@ class VehicleMotionTracker(
     fun reset() {
         speedMps = 0.0
         headingOffsetDeg = null
+        pendingCourseDegrees = null
         lastAccelerationNs = 0L
         lastEmitNs = 0L
         distanceSinceEmit = 0.0
@@ -78,9 +80,8 @@ class VehicleMotionTracker(
         speed?.takeIf { it.isFinite() }?.let {
             speedMps = it.coerceIn(0.0, 55.0)
         }
-        val azimuth = sensorAzimuthDeg
-        if (courseDegrees != null && azimuth != null && (speed ?: speedMps) > 2.0) {
-            headingOffsetDeg = normalizeDegrees(courseDegrees - azimuth)
+        if (courseDegrees != null && (speed ?: speedMps) > 2.0) {
+            applyOrQueueCourse(courseDegrees)
         }
         uncertaintyMeters = 3.0
         lastCalibratedMillis = timestampMillis
@@ -90,15 +91,25 @@ class VehicleMotionTracker(
         correctHeading(courseDegrees, System.currentTimeMillis())
     }
 
-    /** A visual yaw correction is independent of GNSS and is particularly valuable under spoofing. */
+    /** A visual/route yaw correction is independent of GNSS and remains valid if it arrives before the first sensor event. */
     fun correctHeading(
         courseDegrees: Double,
         timestampMillis: Long,
     ) {
-        val azimuth = sensorAzimuthDeg ?: return
-        headingOffsetDeg = normalizeDegrees(courseDegrees - azimuth)
+        applyOrQueueCourse(courseDegrees)
         uncertaintyMeters = uncertaintyMeters.coerceAtMost(5.0)
         lastCalibratedMillis = timestampMillis
+    }
+
+    private fun applyOrQueueCourse(courseDegrees: Double) {
+        val normalizedCourse = normalizeDegrees(courseDegrees)
+        val azimuth = sensorAzimuthDeg
+        if (azimuth == null) {
+            pendingCourseDegrees = normalizedCourse
+        } else {
+            headingOffsetDeg = normalizeDegrees(normalizedCourse - azimuth)
+            pendingCourseDegrees = null
+        }
     }
 
     override fun onSensorChanged(event: SensorEvent) {
@@ -113,7 +124,12 @@ class VehicleMotionTracker(
         val orientation = FloatArray(3)
         SensorManager.getRotationMatrixFromVector(rotation, event.values)
         SensorManager.getOrientation(rotation, orientation)
-        sensorAzimuthDeg = normalizeDegrees(Math.toDegrees(orientation[0].toDouble()))
+        val azimuth = normalizeDegrees(Math.toDegrees(orientation[0].toDouble()))
+        sensorAzimuthDeg = azimuth
+        pendingCourseDegrees?.let { course ->
+            headingOffsetDeg = normalizeDegrees(course - azimuth)
+            pendingCourseDegrees = null
+        }
     }
 
     private fun updateAcceleration(event: SensorEvent) {
